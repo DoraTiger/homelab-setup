@@ -80,6 +80,8 @@ bash init.sh
     [ 2] 02-git-config.sh     Git 全局配置
     ...
     [13] 13-zellij.sh         Zellij 终端复用器安装
+    [14] 14-obsidian.sh       Obsidian 笔记工具安装
+    [15] 15-zotero.sh         Zotero 文献管理安装
   ────────────────────────────────────────────────
     [a]  全部执行     [p]  配置代理     [q]  退出
 ```
@@ -133,6 +135,8 @@ bash init.sh
 | 11 | texlive | TeX Live 全量安装 + 清华 CTAN 镜像 |
 | 12 | xrdp | XRDP 远程桌面 + XFCE + polkit WiFi 修复 |
 | 13 | zellij | Zellij 终端复用器 + GitHub 二进制安装 |
+| 14 | obsidian | Obsidian 笔记工具 + Deb 包安装 + CLI 启用 |
+| 15 | zotero | Zotero 文献管理 + Tarball 用户级安装 |
 
 ## 新增模块
 
