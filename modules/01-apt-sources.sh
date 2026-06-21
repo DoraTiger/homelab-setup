@@ -4,23 +4,6 @@
 set -e
 source "$(dirname "$0")/../common.sh"
 
-# ========== sudo 权限检查 ==========
-
-ensure_sudo() {
-    if [ "$EUID" -eq 0 ]; then
-        return 0
-    fi
-    if ! command -v sudo &>/dev/null; then
-        log_error "sudo 未安装，请先以 root 身份执行: apt install -y sudo"
-        exit 1
-    fi
-    log_info "此步骤需要 sudo 权限"
-    sudo -v 2>/dev/null || {
-        log_error "sudo 验证失败，请确认用户已加入 sudo 组"
-        exit 1
-    }
-}
-
 # ========== 检测发行版 ==========
 
 IFS='|' read -r DISTRO CODENAME <<< "$(detect_distro)"
