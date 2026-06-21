@@ -122,7 +122,7 @@ bash init.sh
 | 编号 | 模块 | 说明 |
 |------|------|------|
 | 00 | ssh | SSH 密钥生成、authorized_keys 管理、权限设置 |
-| 01 | apt-sources | APT 清华镜像源、基础工具安装、apt upgrade |
+| 01 | apt-sources | APT 清华镜像源、基础工具安装、apt upgrade、chrony 时间同步 |
 | 02 | git-config | Git 安装 + 用户名邮箱 + 默认分支 + 常用别名 |
 | 03 | docker | Docker CE + Compose + Daemon 配置 + 镜像加速 |
 | 04 | miniconda | Miniconda 安装 + conda/pip 清华镜像 + conda upgrade |

@@ -1,5 +1,5 @@
 #!/bin/bash
-# DESCRIPTION: APT 软件源配置 — 配置清华镜像源并安装基础工具
+# DESCRIPTION: APT 源配置、基础工具安装与时间同步
 
 set -e
 source "$(dirname "$0")/../common.sh"
@@ -187,9 +187,21 @@ UPGRADABLE=$(apt list --upgradable 2>/dev/null | grep -v "Listing" | head -n1)
 if [ -n "$UPGRADABLE" ]; then
     log_info "发现可升级的软件包，正在升级..."
     sudo apt upgrade -y
-    log_success "软件包升级完成"
+log_success "软件包升级完成"
+fi
+
+# ========== 时间同步（chrony） ==========
+
+log_info "检查时间同步服务..."
+
+if dpkg -s chrony &>/dev/null; then
+    log_success "chrony 已安装，跳过"
 else
-    log_success "所有软件包已是最新版本"
+    log_info "安装 chrony（NTP 时间同步）..."
+    sudo apt install -y chrony
+    sudo systemctl enable chrony
+    sudo systemctl start chrony
+    log_success "chrony 安装完成，时间同步已启用"
 fi
 
 log_success "APT 源配置完成"
