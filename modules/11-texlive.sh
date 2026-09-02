@@ -107,22 +107,13 @@ fi
 
 log_info "配置 TeX Live shell 环境..."
 
-TEX_ENV_FILE="$HOME/.bashrc.d/texlive.sh"
-mkdir -p "$HOME/.bashrc.d"
-
 TEX_ENV_CONTENT="# TeX Live environment (managed by homelab setup)
-export PATH=\"$TEXLIVE_BIN:\$PATH\"
-export MANPATH=\"\$TEXLIVE_DIR/texmf-dist/doc/man:\$MANPATH\"
-export INFOPATH=\"\$TEXLIVE_DIR/texmf-dist/doc/info:\$INFOPATH\""
+export TEXLIVE_DIR=\"$TEXLIVE_DIR\"
+homelab_path_prepend \"$TEXLIVE_BIN\"
+homelab_var_prepend MANPATH \"\$TEXLIVE_DIR/texmf-dist/doc/man\"
+homelab_var_prepend INFOPATH \"\$TEXLIVE_DIR/texmf-dist/doc/info\""
 
-if [ ! -f "$TEX_ENV_FILE" ] || [ "$(cat "$TEX_ENV_FILE")" != "$TEX_ENV_CONTENT" ]; then
-    echo "$TEX_ENV_CONTENT" > "$TEX_ENV_FILE"
-    log_success "TeX Live 环境变量已写入 $TEX_ENV_FILE"
-else
-    log_success "TeX Live 环境变量已是最新"
-fi
-
-ensure_bashrc_d_loader
+write_profile_env_file texlive "$TEX_ENV_CONTENT"
 
 # ========== 配置 tlmgr 镜像 ==========
 
@@ -141,9 +132,11 @@ fi
 
 # ========== 升级 ==========
 
-log_info "检查 TeX Live 升级..."
-export PATH="$TEXLIVE_BIN:$PATH"
-tlmgr update --all 2>/dev/null || true
+if upgrade_requested; then
+    log_info "升级模式已开启，更新 TeX Live 软件包..."
+    export PATH="$TEXLIVE_BIN:$PATH"
+    tlmgr update --all 2>/dev/null || log_warn "TeX Live 升级失败，保留当前安装"
+fi
 
 # ========== 验证 ==========
 

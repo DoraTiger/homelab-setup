@@ -47,9 +47,11 @@ export SDKMAN_DIR="$SDKMAN_DIR"
 # shellcheck source=/dev/null
 source "$SDKMAN_DIR/bin/sdkman-init.sh"
 
-# SDKMAN 自升级
-log_info "检查 SDKMAN 升级..."
-sdk selfupdate 2>/dev/null || true
+# SDKMAN 自升级仅在显式升级模式运行。
+if upgrade_requested; then
+    log_info "升级模式已开启，更新 SDKMAN..."
+    sdk selfupdate 2>/dev/null || log_warn "SDKMAN 自升级失败，保留当前版本"
+fi
 
 # ========== 2. 配置 SDKMAN Shell ==========
 
@@ -61,6 +63,12 @@ mkdir -p "$HOME/.bashrc.d"
 SDKMAN_ENV_CONTENT="# SDKMAN environment (managed by homelab setup)
 export SDKMAN_DIR=\"$SDKMAN_DIR\"
 [[ -s \"\$SDKMAN_DIR/bin/sdkman-init.sh\" ]] && source \"\$SDKMAN_DIR/bin/sdkman-init.sh\""
+
+SDKMAN_PROFILE_CONTENT="# Java and Maven environment (managed by homelab setup)
+export SDKMAN_DIR=\"$SDKMAN_DIR\"
+homelab_path_prepend \"\$SDKMAN_DIR/candidates/maven/current/bin\"
+homelab_path_prepend \"\$SDKMAN_DIR/candidates/java/current/bin\""
+write_profile_env_file sdkman "$SDKMAN_PROFILE_CONTENT"
 
 if [ ! -f "$SDKMAN_ENV_FILE" ] || [ "$(cat "$SDKMAN_ENV_FILE")" != "$SDKMAN_ENV_CONTENT" ]; then
     echo "$SDKMAN_ENV_CONTENT" > "$SDKMAN_ENV_FILE"
@@ -85,25 +93,49 @@ ensure_bashrc_d_loader
 
 log_info "检查 Java..."
 
-# 优先尝试 Dragonwell 21，回退到 OpenJDK 21
-JAVA_CANDIDATES=($(sdk list java 2>/dev/null | grep -E "21\.[0-9]+\.[0-9]+-tem" | head -3 | awk '{print $NF}'))
+# 默认模式保留当前受 SDKMAN 管理的 Java，避免一次收敛执行隐式安装新补丁版。
+if [ -x "$SDKMAN_DIR/candidates/java/current/bin/java" ] && ! upgrade_requested; then
+    CURRENT_JAVA=$(sdk current java 2>/dev/null | awk '{print $NF}')
+    log_success "默认模式保留当前 Java: $CURRENT_JAVA"
+else
+    # SDKMAN 表格的稳定边界是竖线列：Version 在第 3 列，Identifier 在第 4 列。
+    # Temurin 21 允许带 +build 后缀，不能只接受三段数字。
+    mapfile -t JAVA_CANDIDATES < <(
+        sdk list java 2>/dev/null |
+            awk -F'|' '
+                {
+                    version=$3
+                    identifier=$4
+                    gsub(/^[ \t]+|[ \t]+$/, "", version)
+                    gsub(/^[ \t]+|[ \t]+$/, "", identifier)
+                    if (version ~ /^21\./ && identifier ~ /-tem$/) print identifier
+                }
+            ' |
+            head -3
+    )
 
-if [ ${#JAVA_CANDIDATES[@]} -eq 0 ]; then
-    # 尝试 Dragonwell
-    JAVA_CANDIDATES=($(sdk list java 2>/dev/null | grep -i "21.*albba" | head -3 | awk '{print $NF}'))
-fi
+    if [ ${#JAVA_CANDIDATES[@]} -eq 0 ]; then
+        mapfile -t JAVA_CANDIDATES < <(
+            sdk list java 2>/dev/null |
+                awk -F'|' '
+                    {
+                        version=$3
+                        identifier=$4
+                        gsub(/^[ \t]+|[ \t]+$/, "", version)
+                        gsub(/^[ \t]+|[ \t]+$/, "", identifier)
+                        if (version ~ /^21\./ && identifier != "") print identifier
+                    }
+                ' |
+                head -3
+        )
+    fi
 
-if [ ${#JAVA_CANDIDATES[@]} -eq 0 ]; then
-    # 最后回退到通用 21
-    JAVA_CANDIDATES=($(sdk list java 2>/dev/null | grep -E "^\s*\|.*21\." | head -3 | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2}'))
-fi
+    if [ ${#JAVA_CANDIDATES[@]} -eq 0 ]; then
+        log_error "未找到可用的 Java 21 版本"
+        exit 1
+    fi
 
-if [ ${#JAVA_CANDIDATES[@]} -eq 0 ]; then
-    log_error "未找到可用的 Java 21 版本"
-    exit 1
-fi
-
-TARGET_JAVA="${JAVA_CANDIDATES[0]}"
+    TARGET_JAVA="${JAVA_CANDIDATES[0]}"
 
 # 检查是否已安装目标版本
 JAVA_INSTALLED=false
@@ -113,12 +145,12 @@ if [ -d "$SDKMAN_DIR/candidates/java" ]; then
     done
 fi
 
-if [ "$JAVA_INSTALLED" = false ]; then
-    log_info "安装 Java: $TARGET_JAVA"
-    sdk install java "$TARGET_JAVA"
-    sdk default java "$TARGET_JAVA"
-    log_success "Java 已安装并设为默认: $TARGET_JAVA"
-else
+    if [ "$JAVA_INSTALLED" = false ]; then
+        log_info "安装 Java: $TARGET_JAVA"
+        sdk install java "$TARGET_JAVA"
+        sdk default java "$TARGET_JAVA"
+        log_success "Java 已安装并设为默认: $TARGET_JAVA"
+    else
     # 已安装 → 检查 current 链接是否有效
     CURRENT_JAVA=$(sdk current java 2>/dev/null | awk '{print $NF}')
     CURRENT_LINK="$SDKMAN_DIR/candidates/java/current"
@@ -131,6 +163,7 @@ else
         log_success "Java 已是目标版本: $TARGET_JAVA"
         # Java 版本升级需手动操作: sdk install java <新版本>-tem
         # sdk upgrade java 会跨大版本（如 21→25），不自动执行
+    fi
     fi
 fi
 
@@ -166,9 +199,10 @@ else
         log_success "Maven 已设为默认: $INSTALLED_VER"
     else
         log_success "Maven 已安装: $CURRENT_MAVEN"
-        # 尝试升级到最新版本
-        log_info "检查 Maven 升级..."
-        sdk upgrade maven 2>/dev/null || true
+        if upgrade_requested; then
+            log_info "升级模式已开启，更新 Maven..."
+            sdk upgrade maven 2>/dev/null || log_warn "Maven 升级失败，保留当前版本"
+        fi
     fi
 fi
 

@@ -17,18 +17,29 @@ GO_VERSIONS_DIR="$HOME/.local/opt/go/versions"
 GO_CURRENT_LINK="$HOME/.local/opt/go/current"
 GO_CACHE_DIR="$CACHE_DIR/go"
 GO_PKG_DIR="$PACKAGES_DIR/golang"
+GO_BIN_DIR="$HOME/.local/bin"
 
-mkdir -p "$GO_VERSIONS_DIR" "$GO_CACHE_DIR" "$GO_PKG_DIR"
+mkdir -p "$GO_VERSIONS_DIR" "$GO_CACHE_DIR" "$GO_PKG_DIR" "$GO_BIN_DIR"
 
-# ========== 获取最新版本 ==========
+# ========== 确定目标版本 ==========
 
-log_info "检测 Go 最新版本..."
+CURRENT_GO_VERSION=""
+if [ -x "$GO_CURRENT_LINK/bin/go" ]; then
+    CURRENT_GO_VERSION=$("$GO_CURRENT_LINK/bin/go" version 2>/dev/null | awk '{print $3}' | sed 's/^go//')
+fi
 
 LATEST_GO_VERSION=""
-if command -v timeout &>/dev/null; then
-    LATEST_GO_VERSION=$(run_with_optional_proxy timeout 8s wget -qO- "https://go.dev/VERSION?m=text" 2>/dev/null | head -n1)
+if [ -n "$CURRENT_GO_VERSION" ] && ! upgrade_requested; then
+    # 默认模式使用 current 指向的现有版本，避免仅为检查更新而联网。
+    LATEST_GO_VERSION="go$CURRENT_GO_VERSION"
+    log_info "默认模式保留现有 Go $CURRENT_GO_VERSION"
 else
-    LATEST_GO_VERSION=$(run_with_optional_proxy wget -qO- --timeout=8 "https://go.dev/VERSION?m=text" 2>/dev/null | head -n1)
+    log_info "检测 Go 最新版本..."
+    if command -v timeout &>/dev/null; then
+        LATEST_GO_VERSION=$(run_with_optional_proxy timeout 8s wget -qO- "https://go.dev/VERSION?m=text" 2>/dev/null | head -n1)
+    else
+        LATEST_GO_VERSION=$(run_with_optional_proxy wget -qO- --timeout=8 "https://go.dev/VERSION?m=text" 2>/dev/null | head -n1)
+    fi
 fi
 # go.dev 返回 "go1.26.4"，去掉 go 前缀
 LATEST_GO_VERSION="${LATEST_GO_VERSION#go}"
@@ -106,32 +117,22 @@ fi
 
 # ========== 配置环境变量 ==========
 
-GO_ENV_FILE="$HOME/.bashrc.d/go.sh"
-mkdir -p "$HOME/.bashrc.d"
-
 GO_ENV_CONTENT="# Go environment (managed by homelab setup)
 export GOROOT=\"$GO_CURRENT_LINK\"
 export GOPATH=\"$GO_CACHE_DIR\"
-export GOBIN=\"\$GOPATH/bin\"
-export PATH=\"\$GOROOT/bin:\$GOBIN:\$PATH\"
+export GOBIN=\"$GO_BIN_DIR\"
+homelab_path_prepend \"\$GOBIN\"
+homelab_path_prepend \"\$GOROOT/bin\"
 export GOPROXY=https://goproxy.cn,direct
 export GOMODCACHE=\"\$GOPATH/mod\"
 export GOCACHE=\"\$GOPATH/build\""
 
-if [ ! -f "$GO_ENV_FILE" ] || [ "$(cat "$GO_ENV_FILE")" != "$GO_ENV_CONTENT" ]; then
-    echo "$GO_ENV_CONTENT" > "$GO_ENV_FILE"
-    log_success "环境变量已写入 $GO_ENV_FILE"
-else
-    log_success "环境变量已是最新"
-fi
-
-# 确保 .bashrc 加载 .bashrc.d/
-ensure_bashrc_d_loader
+write_profile_env_file go "$GO_ENV_CONTENT"
 
 # 当前 session 立即生效
 export GOROOT="$GO_CURRENT_LINK"
 export GOPATH="$GO_CACHE_DIR"
-export GOBIN="$GOPATH/bin"
+export GOBIN="$GO_BIN_DIR"
 export PATH="$GOROOT/bin:$GOBIN:$PATH"
 export GOPROXY=https://goproxy.cn,direct
 export GOMODCACHE="$GOPATH/mod"

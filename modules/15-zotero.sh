@@ -71,6 +71,16 @@ get_zotero_archive_ext() {
 log_info "检查 Zotero 版本..."
 
 INSTALLED_VER=$(get_installed_zotero_version)
+if [ -n "$INSTALLED_VER" ] && ! upgrade_requested; then
+    log_success "Zotero 已安装: $INSTALLED_VER"
+    log_info "默认模式不联网检查或升级 Zotero"
+    if [ ! -L "$ZOTERO_DESKTOP_LINK" ] || [ ! -f "$ZOTERO_DESKTOP_LINK" ]; then
+        log_info "修复 Zotero 桌面快捷方式..."
+        (cd "$ZOTERO_INSTALL_DIR" && ./set_launcher_icon 2>/dev/null) || true
+        ln -sfn "$ZOTERO_INSTALL_DIR/zotero.desktop" "$ZOTERO_DESKTOP_LINK"
+    fi
+    exit 0
+fi
 LATEST_VER=$(get_latest_zotero_version)
 
 if [ -z "$LATEST_VER" ]; then
@@ -145,9 +155,10 @@ fi
 
 # 备份旧版本
 if [ -d "$ZOTERO_INSTALL_DIR" ]; then
-    BACKUP_DIR="${ZOTERO_INSTALL_DIR}.bak.$(date +%s)"
-    log_info "备份旧版本: $BACKUP_DIR"
-    mv "$ZOTERO_INSTALL_DIR" "$BACKUP_DIR"
+    ZOTERO_BACKUP_DIR="$BACKUP_DIR/zotero/$(date +%Y%m%d-%H%M%S)/application"
+    install -d -m 700 "$(dirname "$ZOTERO_BACKUP_DIR")"
+    log_info "备份旧版本: $ZOTERO_BACKUP_DIR"
+    mv "$ZOTERO_INSTALL_DIR" "$ZOTERO_BACKUP_DIR"
 fi
 
 # 安装（用户目录，无需 sudo）
@@ -185,16 +196,5 @@ fi
 # ========== 7. 清理 ==========
 
 rm -rf "$EXTRACT_DIR"
-
-# 保留最近 2 个 tarball
-cd "$ZOTERO_CACHE_DIR" 2>/dev/null && \
-    ls -t Zotero_*.tar.* 2>/dev/null | tail -n +3 | xargs -r rm -f
-
-# 清理旧的备份（保留最近 1 个）
-OLD_BAK=$(ls -dt "$HOME/.local/opt/zotero.bak."* 2>/dev/null | tail -n +2)
-if [ -n "$OLD_BAK" ]; then
-    log_info "清理旧版本备份..."
-    echo "$OLD_BAK" | xargs -r rm -rf
-fi
 
 log_success "Zotero 安装完成"

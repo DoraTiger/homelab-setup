@@ -8,6 +8,7 @@ source "$(dirname "$0")/../common.sh"
 
 IFS='|' read -r DISTRO CODENAME <<< "$(detect_distro)"
 log_info "检测到发行版: $DISTRO ($CODENAME)"
+RUN_TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 
 # ========== 幂等性检查 ==========
 
@@ -82,10 +83,10 @@ if [ "$TSINGHUA_CONFIGURED" != "true" ]; then
         FORMAT="deb822"
     fi
 
-    # 备份现有配置
+    # 备份集中写入 setup/backup，避免在 /etc 下生成散落的 .bak 文件。
     if [ -f /etc/apt/sources.list ] && [ "$TSINGHUA_CONFIGURED" = "false" ]; then
-        sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak
-        log_info "已备份原配置: /etc/apt/sources.list.bak"
+        homelab_backup_system_file apt-sources "$RUN_TIMESTAMP" /etc/apt/sources.list sources.list
+        log_info "已备份原配置: $BACKUP_DIR/apt-sources/$RUN_TIMESTAMP/sources.list"
     fi
 
     if [ "$DISTRO" = "debian" ]; then
@@ -178,16 +179,22 @@ else
     log_success "基础工具已全部安装，跳过"
 fi
 
-# ========== 升级已安装的软件包 ==========
+# ========== 可选升级已安装的软件包 ==========
 
-log_info "检查软件包升级..."
-ensure_sudo
-sudo apt-get update -y -qq
-UPGRADABLE=$(apt list --upgradable 2>/dev/null | grep -v "Listing" | head -n1)
-if [ -n "$UPGRADABLE" ]; then
-    log_info "发现可升级的软件包，正在升级..."
-    sudo apt upgrade -y
-log_success "软件包升级完成"
+if upgrade_requested; then
+    log_info "升级模式已开启，检查系统软件包..."
+    ensure_sudo
+    sudo apt-get update -y -qq
+    UPGRADABLE=$(apt list --upgradable 2>/dev/null | grep -v "Listing" | head -n1)
+    if [ -n "$UPGRADABLE" ]; then
+        log_info "发现可升级的软件包，正在升级..."
+        sudo apt upgrade -y
+        log_success "软件包升级完成"
+    else
+        log_success "系统软件包已是最新"
+    fi
+else
+    log_info "默认模式不升级已安装的软件包"
 fi
 
 # ========== 时间同步（chrony） ==========

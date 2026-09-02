@@ -17,6 +17,10 @@ INSTALL_DIR="$HOME/.local/opt/miniconda3"
 INSTALLER_DIR="$PACKAGES_DIR/miniconda"
 INSTALLER="$INSTALLER_DIR/Miniconda3-latest-Linux-x86_64.sh"
 MINICONDA_URL="https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh"
+CONDA_PACKAGE_CACHE_DIR="$CACHE_DIR/conda/pkgs"
+PIP_CACHE_DIR="$CACHE_DIR/pip"
+
+mkdir -p "$CONDA_PACKAGE_CACHE_DIR" "$PIP_CACHE_DIR"
 
 # ========== 配置镜像源 ==========
 
@@ -31,7 +35,9 @@ CONDA_CONF_CONTENT="channels:
 show_channel_urls: true
 channel_priority: strict
 custom_channels:
-  conda-forge: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud"
+  conda-forge: https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud
+pkgs_dirs:
+  - $CONDA_PACKAGE_CACHE_DIR"
 
 if [ ! -f "$CONDA_CONF" ] || [ "$(cat "$CONDA_CONF")" != "$CONDA_CONF_CONTENT" ]; then
     echo "$CONDA_CONF_CONTENT" > "$CONDA_CONF"
@@ -45,7 +51,8 @@ PIPCONF_DIR="$HOME/.pip"
 PIPCONF_FILE="$PIPCONF_DIR/pip.conf"
 PIPCONF_CONTENT="[global]
 index-url = https://pypi.tuna.tsinghua.edu.cn/simple
-trusted-host = pypi.tuna.tsinghua.edu.cn"
+trusted-host = pypi.tuna.tsinghua.edu.cn
+cache-dir = $PIP_CACHE_DIR"
 
 if [ ! -f "$PIPCONF_FILE" ] || [ "$(cat "$PIPCONF_FILE")" != "$PIPCONF_CONTENT" ]; then
     mkdir -p "$PIPCONF_DIR"
@@ -61,15 +68,15 @@ if [ -f "$INSTALL_DIR/bin/conda" ]; then
     CONDA_VER=$("$INSTALL_DIR/bin/conda" --version 2>/dev/null | awk '{print $2}')
     log_success "Miniconda 已安装: $CONDA_VER ($INSTALL_DIR)"
 
-    # 升级 conda 及所有包（不影响用户创建的 conda 环境）
-    log_info "检查 Miniconda 升级..."
-    "$INSTALL_DIR/bin/conda" update -n base -c defaults conda -y 2>/dev/null || true
-    "$INSTALL_DIR/bin/conda" update --all -y 2>/dev/null || true
-    NEW_VER=$("$INSTALL_DIR/bin/conda" --version 2>/dev/null | awk '{print $2}')
-    if [ "$NEW_VER" != "$CONDA_VER" ]; then
-        log_success "Miniconda 已升级: $CONDA_VER → $NEW_VER"
+    if upgrade_requested; then
+        # 只升级 base 环境；不修改用户创建的独立环境。
+        log_info "升级模式已开启，更新 Miniconda base 环境..."
+        "$INSTALL_DIR/bin/conda" update -n base -c defaults conda -y
+        "$INSTALL_DIR/bin/conda" update -n base --all -y
+        NEW_VER=$("$INSTALL_DIR/bin/conda" --version 2>/dev/null | awk '{print $2}')
+        log_success "Miniconda 升级检查完成: $CONDA_VER → $NEW_VER"
     else
-        log_success "Miniconda 已是最新版本"
+        log_info "默认模式保留现有 Miniconda 版本"
     fi
 else
     # 下载安装包（缓存到 packages/）
@@ -93,6 +100,10 @@ fi
 # ========== 初始化 Shell ==========
 
 log_info "配置 conda shell 环境..."
+
+CONDA_PROFILE_CONTENT="# Conda environment (managed by homelab setup)
+homelab_path_prepend \"$INSTALL_DIR/bin\""
+write_profile_env_file conda "$CONDA_PROFILE_CONTENT"
 
 # 写入 .bashrc.d/conda.sh
 CONDA_ENV_FILE="$HOME/.bashrc.d/conda.sh"

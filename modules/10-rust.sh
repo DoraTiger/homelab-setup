@@ -25,8 +25,9 @@ else
 
     # 从清华镜像直接下载 rustup-init 二进制
     RUSTUP_INIT_URL="https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup/dist/x86_64-unknown-linux-gnu/rustup-init"
-    TMP_INIT="$(mktemp)"
-    if curl -fsSL -o "$TMP_INIT" "$RUSTUP_INIT_URL"; then
+    RUSTUP_TMP_DIR="$(mktemp -d)"
+    TMP_INIT="$RUSTUP_TMP_DIR/rustup-init"
+    if run_with_optional_proxy curl -fsSL -o "$TMP_INIT" "$RUSTUP_INIT_URL"; then
         chmod +x "$TMP_INIT"
         # 确保环境变量传递给 rustup-init
         export RUSTUP_HOME="$RUSTUP_HOME"
@@ -36,10 +37,10 @@ else
         "$TMP_INIT" -y --no-modify-path \
             --default-toolchain stable \
             --default-host x86_64-unknown-linux-gnu
-        rm -f "$TMP_INIT"
+        rm -rf "$RUSTUP_TMP_DIR"
         log_success "rustup 安装完成"
     else
-        rm -f "$TMP_INIT"
+        rm -rf "$RUSTUP_TMP_DIR"
         log_error "rustup-init 下载失败"
         exit 1
     fi
@@ -51,7 +52,9 @@ export PATH="$CARGO_HOME/bin:$PATH"
 # ========== 2. 安装/更新 stable 工具链 ==========
 
 log_info "检查 Rust stable 工具链..."
-rustup install stable 2>/dev/null || true
+if ! rustup toolchain list 2>/dev/null | grep -q '^stable'; then
+    rustup install stable
+fi
 rustup default stable 2>/dev/null || true
 log_success "Rust stable: $(rustc --version)"
 
@@ -90,29 +93,21 @@ fi
 
 log_info "配置 Rust shell 环境..."
 
-RUST_ENV_FILE="$HOME/.bashrc.d/rust.sh"
-mkdir -p "$HOME/.bashrc.d"
-
 RUST_ENV_CONTENT="# Rust environment (managed by homelab setup)
 export RUSTUP_HOME=\"$RUSTUP_HOME\"
 export CARGO_HOME=\"$CARGO_HOME\"
-export PATH=\"\$CARGO_HOME/bin:\$PATH\"
+homelab_path_prepend \"\$CARGO_HOME/bin\"
 export RUSTUP_DIST_SERVER=\"https://mirrors.tuna.tsinghua.edu.cn/rustup\"
 export RUSTUP_UPDATE_ROOT=\"https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup\""
 
-if [ ! -f "$RUST_ENV_FILE" ] || [ "$(cat "$RUST_ENV_FILE")" != "$RUST_ENV_CONTENT" ]; then
-    echo "$RUST_ENV_CONTENT" > "$RUST_ENV_FILE"
-    log_success "Rust 环境变量已写入 $RUST_ENV_FILE"
-else
-    log_success "Rust 环境变量已是最新"
-fi
-
-ensure_bashrc_d_loader
+write_profile_env_file rust "$RUST_ENV_CONTENT"
 
 # ========== 5. 升级 ==========
 
-log_info "检查 rustup 升级..."
-rustup update stable 2>/dev/null || true
+if upgrade_requested; then
+    log_info "升级模式已开启，更新 Rust stable 工具链..."
+    rustup update stable 2>/dev/null || log_warn "Rust 升级失败，保留当前工具链"
+fi
 
 # ========== 验证 ==========
 

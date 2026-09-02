@@ -16,9 +16,19 @@ get_installed_obsidian_version() {
 }
 
 get_latest_obsidian_version() {
-    local api_url="https://api.github.com/repos/obsidianmd/obsidian-releases/releases/latest"
-    run_with_optional_proxy curl -fsSL "$api_url" 2>/dev/null \
-        | grep -o '"tag_name": *"[^"]*"' | head -1 | grep -o '"v[^"]*"' | tr -d '"'
+    local releases_url="https://raw.githubusercontent.com/obsidianmd/obsidian-releases/master/desktop-releases.json"
+    local version
+    version=$(run_with_optional_proxy curl -fsSL "$releases_url" 2>/dev/null |
+        grep -o '"latestVersion": *"[^"]*"' | head -1 | cut -d'"' -f4)
+    [ -n "$version" ] && printf 'v%s\n' "$version"
+}
+
+get_obsidian_deb_url() {
+    local version_tag="$1"
+    local api_url="https://api.github.com/repos/obsidianmd/obsidian-releases/releases/tags/$version_tag"
+    run_with_optional_proxy curl -fsSL "$api_url" 2>/dev/null |
+        grep -o '"browser_download_url": *"[^"]*_amd64\.deb"' |
+        head -1 | cut -d'"' -f4
 }
 
 # ========== 1. 获取版本信息 ==========
@@ -26,6 +36,16 @@ get_latest_obsidian_version() {
 log_info "检查 Obsidian 版本..."
 
 INSTALLED_VER=$(get_installed_obsidian_version)
+if [ -n "$INSTALLED_VER" ] && ! upgrade_requested; then
+    log_success "Obsidian 已安装: $INSTALLED_VER"
+    log_info "默认模式不联网检查或升级 Obsidian"
+    if command -v obsidian &>/dev/null; then
+        log_success "Obsidian CLI 可用: $(command -v obsidian)"
+    else
+        log_info "如需 CLI，请在 Obsidian 设置 → 通用 → 命令行界面中启用"
+    fi
+    exit 0
+fi
 LATEST_VER=$(get_latest_obsidian_version)
 
 if [ -z "$LATEST_VER" ]; then
@@ -62,16 +82,19 @@ fi
 # ========== 3. 下载 Deb 包 ==========
 
 DEB_FILE="$OBSIDIAN_CACHE_DIR/obsidian_${LATEST_NUM}_amd64.deb"
-DEB_URL="https://github.com/obsidianmd/obsidian-releases/releases/download/${LATEST_VER}/obsidian_${LATEST_NUM}_amd64.deb"
+DEB_URL=$(get_obsidian_deb_url "$LATEST_VER")
+[ -n "$DEB_URL" ] || { log_error "未找到 Obsidian $LATEST_VER 的 amd64 Deb 资产"; exit 1; }
 
-if [ -f "$DEB_FILE" ]; then
+if [ -f "$DEB_FILE" ] && dpkg-deb --info "$DEB_FILE" &>/dev/null; then
     log_info "使用缓存的 Deb 包: $DEB_FILE"
 else
+    [ ! -e "$DEB_FILE" ] || { log_warn "删除无效的 Obsidian Deb 缓存"; rm -f "$DEB_FILE"; }
     log_info "下载 Obsidian ${LATEST_VER}..."
     if ! run_with_optional_proxy curl -fSL -o "$DEB_FILE" "$DEB_URL"; then
         log_error "下载失败: $DEB_URL"
         exit 1
     fi
+    dpkg-deb --info "$DEB_FILE" &>/dev/null || { log_error "下载的 Deb 包校验失败"; exit 1; }
     log_success "下载完成: $DEB_FILE"
 fi
 
@@ -85,8 +108,7 @@ else
     log_info "升级 Obsidian: $INSTALLED_VER → $LATEST_VER"
 fi
 
-sudo dpkg -i "$DEB_FILE"
-sudo apt-get install -f -y 2>/dev/null || true
+sudo apt-get install -y "$DEB_FILE"
 
 # ========== 5. 验证 ==========
 
@@ -109,11 +131,5 @@ else
     log_info "请在 Obsidian 设置 → 通用 → 命令行界面 中启用 CLI"
     log_info "启用后 CLI 会自动链接到 ~/.local/bin/obsidian"
 fi
-
-# ========== 6. 清理 ==========
-
-# 保留最近 2 个 deb 包，清理更早的
-cd "$OBSIDIAN_CACHE_DIR" 2>/dev/null && \
-    ls -t obsidian_*.deb 2>/dev/null | tail -n +3 | xargs -r rm -f
 
 log_success "Obsidian 安装完成"

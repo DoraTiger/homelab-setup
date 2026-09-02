@@ -44,33 +44,30 @@ fi
 
 # ========== 升级 ==========
 
-log_info "检查 Zellij 升级..."
-ZELLJ_LATEST_URL="https://github.com/zellij-org/zellij/releases/latest/download/zellij-x86_64-unknown-linux-musl.tar.gz"
-OLD_VER=$("$ZELLJ_DIR/zellij" --version 2>/dev/null | head -n1)
-
-# 下载到临时文件比对版本
-TMP_TAR="$(mktemp)"
-if run_with_optional_proxy curl -fsSL -o "$TMP_TAR" "$ZELLJ_LATEST_URL" 2>/dev/null; then
-    TMP_DIR="$(mktemp -d)"
-    tar -xzf "$TMP_TAR" -C "$TMP_DIR" 2>/dev/null
-    if [ -f "$TMP_DIR/zellij" ]; then
-        NEW_VER=$("$TMP_DIR/zellij" --version 2>/dev/null | head -n1)
-        if [ "$OLD_VER" != "$NEW_VER" ]; then
-            rm -f "$ZELLJ_DIR/zellij"
-            mv "$TMP_DIR/zellij" "$ZELLJ_DIR/zellij"
-            chmod +x "$ZELLJ_DIR/zellij"
-            # 更新缓存
-            mv "$TMP_TAR" "$ZELLJ_PKG_DIR/zellij-x86_64-unknown-linux-musl.tar.gz"
-            log_success "Zellij 已升级: $OLD_VER → $NEW_VER"
-        else
-            log_success "Zellij 已是最新版本: $OLD_VER"
+if upgrade_requested; then
+    log_info "升级模式已开启，检查 Zellij..."
+    ZELLJ_LATEST_URL="https://github.com/zellij-org/zellij/releases/latest/download/zellij-x86_64-unknown-linux-musl.tar.gz"
+    OLD_VER=$("$ZELLJ_DIR/zellij" --version 2>/dev/null | head -n1)
+    TMP_TAR="$(mktemp)"
+    if run_with_optional_proxy curl -fsSL -o "$TMP_TAR" "$ZELLJ_LATEST_URL" 2>/dev/null; then
+        TMP_DIR="$(mktemp -d)"
+        tar -xzf "$TMP_TAR" -C "$TMP_DIR" 2>/dev/null
+        if [ -f "$TMP_DIR/zellij" ]; then
+            NEW_VER=$("$TMP_DIR/zellij" --version 2>/dev/null | head -n1)
+            if [ "$OLD_VER" != "$NEW_VER" ]; then
+                install -m 755 "$TMP_DIR/zellij" "$ZELLJ_DIR/zellij"
+                mv "$TMP_TAR" "$ZELLJ_PKG_DIR/zellij-x86_64-unknown-linux-musl.tar.gz"
+                log_success "Zellij 已升级: $OLD_VER → $NEW_VER"
+            else
+                log_success "Zellij 已是最新版本: $OLD_VER"
+            fi
         fi
         rm -rf "$TMP_DIR"
+    else
+        log_warn "Zellij 升级检查失败，保持当前版本: $OLD_VER"
     fi
-else
-    log_warn "Zellij 升级检查失败，保持当前版本: $OLD_VER"
+    rm -f "$TMP_TAR"
 fi
-rm -f "$TMP_TAR"
 
 # ========== 配置 ==========
 

@@ -4,6 +4,12 @@
 set -e
 source "$(dirname "$0")/../common.sh"
 
+set_git_global_if_needed() {
+    local key="$1" expected="$2" current
+    current=$(git config --global --get "$key" 2>/dev/null || echo "")
+    [ "$current" = "$expected" ] || git config --global "$key" "$expected"
+}
+
 # ========== 检查安装 ==========
 
 if ! command -v git &>/dev/null; then
@@ -28,20 +34,25 @@ if [ -n "$CURRENT_NAME" ] && [ -n "$CURRENT_EMAIL" ]; then
     if prompt_yesno "是否修改?" "n"; then
         GIT_NAME=$(prompt_input "用户名:" "$CURRENT_NAME")
         GIT_EMAIL=$(prompt_input "邮箱:" "$CURRENT_EMAIL")
-        git config --global user.name "$GIT_NAME"
-        git config --global user.email "$GIT_EMAIL"
+        set_git_global_if_needed user.name "$GIT_NAME"
+        set_git_global_if_needed user.email "$GIT_EMAIL"
         log_success "Git 用户信息已更新"
     fi
 else
     GIT_NAME=$(prompt_input "用户名:" "$(whoami)")
     GIT_EMAIL=$(prompt_input "邮箱:" "")
     if [ -z "$GIT_EMAIL" ]; then
-        log_error "邮箱不能为空"
-        exit 1
+        if [ "$SILENT" = "1" ]; then
+            log_warn "静默模式未提供 Git 邮箱，暂不写入用户身份"
+        else
+            log_error "邮箱不能为空"
+            exit 1
+        fi
+    else
+        set_git_global_if_needed user.name "$GIT_NAME"
+        set_git_global_if_needed user.email "$GIT_EMAIL"
+        log_success "Git 用户信息已配置"
     fi
-    git config --global user.name "$GIT_NAME"
-    git config --global user.email "$GIT_EMAIL"
-    log_success "Git 用户信息已配置"
 fi
 
 # ========== 默认分支 ==========
@@ -53,7 +64,7 @@ if [ "$CURRENT_BRANCH" = "main" ]; then
     log_success "默认分支已是 main"
 else
     INIT_BRANCH=$(prompt_choice "默认分支名称:" "main" "main" "master")
-    git config --global init.defaultBranch "$INIT_BRANCH"
+    set_git_global_if_needed init.defaultBranch "$INIT_BRANCH"
     log_success "默认分支设为: $INIT_BRANCH"
 fi
 
@@ -61,11 +72,11 @@ fi
 
 log_info "配置 Git 常用选项..."
 
-git config --global pull.rebase true
-git config --global fetch.prune true
-git config --global diff.colorMoved zebra
-git config --global core.autocrlf input
-git config --global core.editor vim
+set_git_global_if_needed pull.rebase true
+set_git_global_if_needed fetch.prune true
+set_git_global_if_needed diff.colorMoved zebra
+set_git_global_if_needed core.autocrlf input
+set_git_global_if_needed core.editor vim
 
 log_success "Git 常用选项已配置"
 
@@ -73,20 +84,22 @@ log_success "Git 常用选项已配置"
 
 log_info "配置 Git 别名..."
 
-git config --global alias.st status
-git config --global alias.co checkout
-git config --global alias.br branch
-git config --global alias.ci commit
-git config --global alias.lg "log --oneline --graph --decorate -20"
-git config --global alias.last "log -1 --stat"
-git config --global alias.unstage "reset HEAD --"
+set_git_global_if_needed alias.st status
+set_git_global_if_needed alias.co checkout
+set_git_global_if_needed alias.br branch
+set_git_global_if_needed alias.ci commit
+set_git_global_if_needed alias.lg "log --oneline --graph --decorate -20"
+set_git_global_if_needed alias.last "log -1 --stat"
+set_git_global_if_needed alias.unstage "reset HEAD --"
 
 log_success "Git 别名已配置"
 
 # ========== 验证 ==========
 
 echo ""
-log_info "Git 用户: $(git config --global user.name) <$(git config --global user.email)>"
+FINAL_NAME=$(git config --global user.name 2>/dev/null || echo "未配置")
+FINAL_EMAIL=$(git config --global user.email 2>/dev/null || echo "未配置")
+log_info "Git 用户: $FINAL_NAME <$FINAL_EMAIL>"
 log_info "默认分支: $(git config --global init.defaultBranch)"
 log_info "Pull 策略: $(git config --global pull.rebase)"
 log_success "Git 配置完成"

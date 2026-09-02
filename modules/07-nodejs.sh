@@ -3,6 +3,7 @@
 
 set -e
 source "$(dirname "$0")/../common.sh"
+source "$(dirname "$0")/../lib/nodejs-env.sh"
 
 # ========== 禁止 root ==========
 
@@ -13,35 +14,43 @@ fi
 
 # ========== 路径常量 ==========
 
-FNM_DIR="$HOME/.local/opt/fnm"
+FNM_INSTALL_DIR="$HOME/.local/opt/fnm"
+FNM_DATA_DIR="$HOME/.local/share/fnm"
 NPM_CACHE_DIR="$CACHE_DIR/npm"
 NPM_PREFIX_DIR="$HOME/.local/npm-global"
 TARGET_NODE_VERSION="lts/*"
 
-mkdir -p "$NPM_CACHE_DIR" "$NPM_PREFIX_DIR"
+mkdir -p "$FNM_INSTALL_DIR" "$FNM_DATA_DIR" "$NPM_CACHE_DIR" "$NPM_PREFIX_DIR"
+
+if [ -e "$FNM_INSTALL_DIR/node-versions" ] || [ -e "$FNM_INSTALL_DIR/aliases" ]; then
+    FNM_LEGACY_BACKUP="$HOME/.local/opt/fnm-legacy-data-$(date +%Y%m%d%H%M%S)"
+    log_info "检测到旧版 fnm 数据目录，迁移到: $FNM_LEGACY_BACKUP"
+    migrate_legacy_fnm_data "$FNM_INSTALL_DIR" "$FNM_DATA_DIR" "$FNM_LEGACY_BACKUP"
+    log_success "旧版 fnm 数据已备份，规范数据目录保持为: $FNM_DATA_DIR"
+fi
 
 # ========== 1. 安装 fnm ==========
 
-if [ -f "$FNM_DIR/fnm" ]; then
-    log_success "fnm 已安装: $FNM_DIR"
+if [ -f "$FNM_INSTALL_DIR/fnm" ]; then
+    log_success "fnm 已安装: $FNM_INSTALL_DIR"
 
-    # 升级 fnm：重新下载安装脚本覆盖（幂等）
-    log_info "检查 fnm 升级..."
-    FNM_SCRIPT_URL="https://raw.githubusercontent.com/Schniz/fnm/refs/heads/master/.ci/install.sh"
-    TMP_SCRIPT="$(mktemp)"
-    OLD_VER=$("$FNM_DIR/fnm" --version 2>/dev/null)
-    if run_with_optional_proxy curl -fsSL "$FNM_SCRIPT_URL" -o "$TMP_SCRIPT" 2>/dev/null; then
-        bash "$TMP_SCRIPT" --install-dir "$FNM_DIR" --skip-shell >/dev/null 2>&1
-        NEW_VER=$("$FNM_DIR/fnm" --version 2>/dev/null)
-        rm -f "$TMP_SCRIPT"
-        if [ "$OLD_VER" != "$NEW_VER" ]; then
-            log_success "fnm 已升级: $OLD_VER → $NEW_VER"
+    if upgrade_requested; then
+        # fnm 官方安装器负责原位更新可执行文件，不迁移版本数据目录。
+        log_info "升级模式已开启，检查 fnm..."
+        FNM_SCRIPT_URL="https://raw.githubusercontent.com/Schniz/fnm/refs/heads/master/.ci/install.sh"
+        TMP_SCRIPT="$(mktemp)"
+        OLD_VER=$("$FNM_INSTALL_DIR/fnm" --version 2>/dev/null)
+        if run_with_optional_proxy curl -fsSL "$FNM_SCRIPT_URL" -o "$TMP_SCRIPT" 2>/dev/null; then
+            bash "$TMP_SCRIPT" --install-dir "$FNM_INSTALL_DIR" --skip-shell >/dev/null 2>&1
+            NEW_VER=$("$FNM_INSTALL_DIR/fnm" --version 2>/dev/null)
+            rm -f "$TMP_SCRIPT"
+            log_success "fnm 升级检查完成: $OLD_VER → $NEW_VER"
         else
-            log_success "fnm 已是最新版本"
+            rm -f "$TMP_SCRIPT"
+            log_warn "fnm 升级脚本下载失败，保持当前版本: $OLD_VER"
         fi
     else
-        rm -f "$TMP_SCRIPT" 2>/dev/null
-        log_warn "fnm 升级脚本下载失败，保持当前版本: $OLD_VER"
+        log_info "默认模式保留现有 fnm 版本"
     fi
 else
     log_info "安装 fnm..."
@@ -54,21 +63,22 @@ else
         exit 1
     fi
 
-    bash "$TMP_SCRIPT" --install-dir "$FNM_DIR" --skip-shell
+    bash "$TMP_SCRIPT" --install-dir "$FNM_INSTALL_DIR" --skip-shell
     rm -f "$TMP_SCRIPT"
 
-    export PATH="$FNM_DIR:$PATH"
+    export PATH="$FNM_INSTALL_DIR:$PATH"
 
     if ! command -v fnm &>/dev/null; then
-        log_error "fnm 安装后不可用，请检查 $FNM_DIR"
+        log_error "fnm 安装后不可用，请检查 $FNM_INSTALL_DIR"
         exit 1
     fi
 
     log_success "fnm 安装完成"
 fi
 
-export FNM_DIR="$FNM_DIR"
-export PATH="$FNM_DIR:$PATH"
+export FNM_INSTALL_DIR="$FNM_INSTALL_DIR"
+export FNM_DIR="$FNM_DATA_DIR"
+export PATH="$FNM_INSTALL_DIR:$PATH"
 eval "$(fnm env --use-on-cd 2>/dev/null)" || true
 
 # ========== 2. 安装 Node.js ==========
@@ -88,36 +98,42 @@ if [ "$NEED_INSTALL" = true ]; then
     log_info "安装 Node.js $TARGET_NODE_VERSION（使用 npmmirror 加速）..."
     FNM_NODE_DIST_MIRROR="https://npmmirror.com/mirrors/node" \
         fnm install "$TARGET_NODE_VERSION"
-else
-    # 已安装 → 升级到最新 LTS
-    log_info "检查 Node.js 升级..."
+elif upgrade_requested; then
+    log_info "升级模式已开启，检查 Node.js LTS..."
     FNM_NODE_DIST_MIRROR="https://npmmirror.com/mirrors/node" \
         fnm install "$TARGET_NODE_VERSION" 2>/dev/null || true
     fnm upgrade 2>/dev/null || true
+else
+    log_info "默认模式保留现有 Node.js 版本"
 fi
 
-CURRENT_VERSION=$(fnm current 2>/dev/null || echo "")
-DEFAULT_VERSION=$(fnm default 2>/dev/null || echo "")
-
-if [ "$CURRENT_VERSION" != "$TARGET_NODE_VERSION" ] || [ "$DEFAULT_VERSION" != "$TARGET_NODE_VERSION" ]; then
-    fnm use "$TARGET_NODE_VERSION"
+DEFAULT_NODE_LINK="$FNM_DATA_DIR/aliases/default"
+if [ ! -L "$DEFAULT_NODE_LINK" ] || [ ! -x "$DEFAULT_NODE_LINK/bin/node" ]; then
     fnm default "$TARGET_NODE_VERSION"
     log_success "Node.js 默认版本已设为 $TARGET_NODE_VERSION"
 else
-    log_success "Node.js 已是目标版本: $TARGET_NODE_VERSION"
+    log_success "Node.js 默认版本链接有效"
 fi
+export PATH="$DEFAULT_NODE_LINK/bin:$PATH"
 
 # ========== 3. 配置 npm ==========
 
 log_info "配置 npm..."
 
-npm config set prefix "$NPM_PREFIX_DIR" 2>/dev/null
-npm config set cache "$NPM_CACHE_DIR" 2>/dev/null
-npm config set registry https://registry.npmmirror.com 2>/dev/null
+npm_config_set_if_needed() {
+    local key="$1" expected="$2" current
+    current=$(npm config get "$key" 2>/dev/null || echo "")
+    [ "$current" = "$expected" ] || npm config set "$key" "$expected"
+}
 
-# 升级 npm 到最新版
-log_info "检查 npm 升级..."
-npm install -g npm@latest 2>/dev/null || true
+npm_config_set_if_needed prefix "$NPM_PREFIX_DIR"
+npm_config_set_if_needed cache "$NPM_CACHE_DIR"
+npm_config_set_if_needed registry https://registry.npmmirror.com
+
+if upgrade_requested; then
+    log_info "升级模式已开启，更新 npm..."
+    npm install -g npm@latest 2>/dev/null || log_warn "npm 升级失败，保留当前版本"
+fi
 
 # ========== 4. 环境变量 ==========
 
@@ -126,11 +142,10 @@ log_info "配置 Node.js shell 环境..."
 NODE_ENV_FILE="$HOME/.bashrc.d/nodejs.sh"
 mkdir -p "$HOME/.bashrc.d"
 
-NODE_ENV_CONTENT="# Node.js environment (managed by homelab setup)
-export FNM_DIR=\"$FNM_DIR\"
-export PATH=\"\$FNM_DIR:\$PATH\"
-eval \"\$(fnm env --use-on-cd)\" >/dev/null 2>&1
-export PATH=\"$NPM_PREFIX_DIR/bin:\$PATH\""
+NODE_PROFILE_CONTENT="$(render_nodejs_profile_env "$HOME")"
+write_profile_env_file nodejs "$NODE_PROFILE_CONTENT"
+
+NODE_ENV_CONTENT="$(render_nodejs_interactive_env)"
 
 if [ ! -f "$NODE_ENV_FILE" ] || [ "$(cat "$NODE_ENV_FILE")" != "$NODE_ENV_CONTENT" ]; then
     echo "$NODE_ENV_CONTENT" > "$NODE_ENV_FILE"
@@ -143,7 +158,7 @@ ensure_bashrc_d_loader
 
 # ========== 5. 验证 ==========
 
-export PATH="$FNM_DIR:$NPM_PREFIX_DIR/bin:$PATH"
+export PATH="$FNM_INSTALL_DIR:$NPM_PREFIX_DIR/bin:$PATH"
 eval "$(fnm env --use-on-cd 2>/dev/null)" || true
 
 echo ""

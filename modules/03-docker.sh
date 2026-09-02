@@ -4,17 +4,6 @@
 set -e
 source "$(dirname "$0")/../common.sh"
 
-# ========== sudo 权限 ==========
-
-ensure_sudo() {
-    if [ "$EUID" -eq 0 ]; then return 0; fi
-    if ! command -v sudo &>/dev/null; then
-        log_error "sudo 未安装，请先以 root 身份执行: apt install -y sudo"
-        exit 1
-    fi
-    sudo -v 2>/dev/null || { log_error "sudo 验证失败"; exit 1; }
-}
-
 # ========== 清理旧版本 ==========
 
 if dpkg -l docker.io podman-docker 2>/dev/null | grep -q "^ii"; then
@@ -40,18 +29,21 @@ if command -v docker &>/dev/null; then
     COMPOSE_VER=$(docker compose version 2>/dev/null | awk '{print $NF}')
     [ -n "$COMPOSE_VER" ] && log_success "Docker Compose: $COMPOSE_VER"
 
-    # 尝试升级
-    log_info "检查 Docker 升级..."
-    ensure_sudo
-    sudo apt-get update -y -qq
-    UPGRADABLE=$(apt list --upgradable 2>/dev/null | grep -E "docker-ce|containerd|docker-compose|docker-buildx" | head -n1)
-    if [ -n "$UPGRADABLE" ]; then
-        log_info "发现 Docker 新版本，正在升级..."
-        sudo apt-get install --only-upgrade -y docker-ce docker-ce-cli containerd.io \
-            docker-buildx-plugin docker-compose-plugin
-        log_success "Docker 升级完成"
+    if upgrade_requested; then
+        log_info "升级模式已开启，检查 Docker 软件包..."
+        ensure_sudo
+        sudo apt-get update -y -qq
+        UPGRADABLE=$(apt list --upgradable 2>/dev/null | grep -E "docker-ce|containerd|docker-compose|docker-buildx" | head -n1)
+        if [ -n "$UPGRADABLE" ]; then
+            log_info "发现 Docker 新版本，正在升级..."
+            sudo apt-get install --only-upgrade -y docker-ce docker-ce-cli containerd.io \
+                docker-buildx-plugin docker-compose-plugin
+            log_success "Docker 升级完成"
+        else
+            log_success "Docker 已是最新版本"
+        fi
     else
-        log_success "Docker 已是最新版本"
+        log_info "默认模式不升级已安装的 Docker"
     fi
 else
     # 安装 Docker CE
@@ -117,11 +109,13 @@ if [ -f "$DOCKER_DAEMON" ]; then
         log_success "Docker Daemon 配置已是最新，跳过"
     else
         log_warn "Docker Daemon 配置已存在但内容不同"
-        if prompt_yesno "是否覆盖为推荐配置?" "y"; then
-            $SUDO cp "$DOCKER_DAEMON" "${DOCKER_DAEMON}.bak"
+        if prompt_yesno "是否覆盖为推荐配置?" "n"; then
+            homelab_backup_system_file docker "$(date +%Y%m%d-%H%M%S)" "$DOCKER_DAEMON" daemon.json
             echo "$DAEMON_CONFIG" | $SUDO tee "$DOCKER_DAEMON" > /dev/null
             $SUDO systemctl restart docker
             log_success "Docker Daemon 已重启"
+        else
+            log_info "保留现有 Docker Daemon 配置"
         fi
     fi
 else

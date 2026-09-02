@@ -4,18 +4,26 @@
 set -e
 source "$(dirname "$0")/../common.sh"
 
-SETUP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-KEYS_DIR="$SETUP_DIR/keys"
 SSH_DIR="$HOME/.ssh"
+
+# `ssh-keygen` 由 openssh-client 提供。模块编号早于基础 APT 模块，
+# 因此必须自行满足依赖，才能在纯净 Debian 上独立执行。
+if ! command -v ssh-keygen &>/dev/null; then
+    log_info "安装 SSH 客户端工具..."
+    ensure_sudo
+    sudo apt-get update -y
+    sudo apt-get install -y openssh-client
+fi
 
 # ========== 辅助函数 ==========
 
 show_key_info() {
     local pub_file="$1"
-    local name=$(basename "$pub_file")
-    local key_type=$(awk '{print $1}' "$pub_file")
-    local comment=$(awk '{print $NF}' "$pub_file")
-    local fingerprint=$(ssh-keygen -lf "$pub_file" 2>/dev/null | awk '{print $2}')
+    local name key_type comment fingerprint
+    name="$(basename "$pub_file")"
+    key_type="$(awk '{print $1}' "$pub_file")"
+    comment="$(awk '{print $NF}' "$pub_file")"
+    fingerprint="$(ssh-keygen -lf "$pub_file" 2>/dev/null | awk '{print $2}')"
     printf "    %-24s %-10s %s\n" "$name" "$key_type" "$comment"
     [ -n "$fingerprint" ] && echo "                       fingerprint: $fingerprint"
 }
@@ -93,9 +101,9 @@ if [ "$SILENT" != "1" ]; then
     log_info "待注册公钥列表:"
     rows=()
     for pub in "${PUB_KEYS[@]}"; do
-        local name=$(basename "$pub")
-        local key_type=$(awk '{print $1}' "$pub")
-        local comment=$(awk '{print $NF}' "$pub")
+        name="$(basename "$pub")"
+        key_type="$(awk '{print $1}' "$pub")"
+        comment="$(awk '{print $NF}' "$pub")"
         rows+=("$name|$key_type|$comment")
     done
     prompt_table "文件名|类型|注释" "${rows[@]}"
