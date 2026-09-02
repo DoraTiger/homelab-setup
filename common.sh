@@ -39,6 +39,10 @@ source "$SETUP_ROOT/lib/network.sh"
 source "$SETUP_ROOT/lib/config.sh"
 source "$SETUP_ROOT/lib/cli.sh"
 
+# When modules are invoked directly with PROXY_ADDR, propagate the proxy to
+# package managers and installer subprocesses as well as direct curl/wget calls.
+export_proxy_environment
+
 # ========== 权限与工作区 ==========
 
 ensure_sudo() {

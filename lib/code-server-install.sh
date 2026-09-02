@@ -1,17 +1,9 @@
 #!/bin/bash
 
-prepare_code_server_curl_config() {
-    local curl_home="$1"
-
-    mkdir -p "$curl_home"
-    cat > "$curl_home/.curlrc" <<'EOF'
-connect-timeout = 10
-max-time = 300
-retry = 3
-retry-delay = 2
-retry-all-errors
-EOF
-    chmod 600 "$curl_home/.curlrc"
+code_server_deb_url_from_release_json() {
+    local architecture="$1"
+    grep -o 'https://[^" ]*code-server_[^" ]*_\(amd64\|arm64\)\.deb' | \
+        grep "_${architecture}\\.deb$" | head -n1
 }
 
 # code-server may create its default configuration even for --version. Isolate

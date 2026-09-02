@@ -16,11 +16,13 @@ fi
 
 FNM_INSTALL_DIR="$HOME/.local/opt/fnm"
 FNM_DATA_DIR="$HOME/.local/share/fnm"
+FNM_PACKAGE_DIR="$PACKAGES_DIR/fnm"
+FNM_INSTALLER="$FNM_PACKAGE_DIR/install.sh"
 NPM_CACHE_DIR="$CACHE_DIR/npm"
 NPM_PREFIX_DIR="$HOME/.local/npm-global"
 TARGET_NODE_VERSION="lts/*"
 
-mkdir -p "$FNM_INSTALL_DIR" "$FNM_DATA_DIR" "$NPM_CACHE_DIR" "$NPM_PREFIX_DIR"
+mkdir -p "$FNM_INSTALL_DIR" "$FNM_DATA_DIR" "$FNM_PACKAGE_DIR" "$NPM_CACHE_DIR" "$NPM_PREFIX_DIR"
 
 if [ -e "$FNM_INSTALL_DIR/node-versions" ] || [ -e "$FNM_INSTALL_DIR/aliases" ]; then
     FNM_LEGACY_BACKUP="$HOME/.local/opt/fnm-legacy-data-$(date +%Y%m%d%H%M%S)"
@@ -38,10 +40,9 @@ if [ -f "$FNM_INSTALL_DIR/fnm" ]; then
         # fnm 官方安装器负责原位更新可执行文件，不迁移版本数据目录。
         log_info "升级模式已开启，检查 fnm..."
         FNM_SCRIPT_URL="https://raw.githubusercontent.com/Schniz/fnm/refs/heads/master/.ci/install.sh"
-        TMP_SCRIPT="$(mktemp)"
         OLD_VER=$("$FNM_INSTALL_DIR/fnm" --version 2>/dev/null)
-        if run_with_optional_proxy curl -fsSL "$FNM_SCRIPT_URL" -o "$TMP_SCRIPT" 2>/dev/null; then
-            if bash "$TMP_SCRIPT" --install-dir "$FNM_INSTALL_DIR" --skip-shell >/dev/null 2>&1; then
+        if download_package "$FNM_SCRIPT_URL" "$FNM_INSTALLER" validate_shell_script 2>/dev/null; then
+            if run_with_optional_proxy bash "$FNM_INSTALLER" --install-dir "$FNM_INSTALL_DIR" --skip-shell >/dev/null 2>&1; then
                 NEW_VER=$("$FNM_INSTALL_DIR/fnm" --version 2>/dev/null)
                 log_success "fnm 升级检查完成: $OLD_VER → $NEW_VER"
             else
@@ -50,23 +51,18 @@ if [ -f "$FNM_INSTALL_DIR/fnm" ]; then
         else
             log_warn "fnm 升级脚本下载失败，保持当前版本: $OLD_VER"
         fi
-        rm -f "$TMP_SCRIPT"
     else
         log_info "默认模式保留现有 fnm 版本"
     fi
 else
     log_info "安装 fnm..."
     FNM_SCRIPT_URL="https://raw.githubusercontent.com/Schniz/fnm/refs/heads/master/.ci/install.sh"
-    TMP_SCRIPT="$(mktemp)"
-
-    if ! run_with_optional_proxy curl -fsSL "$FNM_SCRIPT_URL" -o "$TMP_SCRIPT"; then
+    if ! download_package "$FNM_SCRIPT_URL" "$FNM_INSTALLER" validate_shell_script; then
         log_error "下载 fnm 安装脚本失败"
-        rm -f "$TMP_SCRIPT" 2>/dev/null
         exit 1
     fi
 
-    bash "$TMP_SCRIPT" --install-dir "$FNM_INSTALL_DIR" --skip-shell
-    rm -f "$TMP_SCRIPT"
+    run_with_optional_proxy bash "$FNM_INSTALLER" --install-dir "$FNM_INSTALL_DIR" --skip-shell
 
     export PATH="$FNM_INSTALL_DIR:$PATH"
 

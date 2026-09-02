@@ -84,13 +84,7 @@ if [ -f "$INSTALL_DIR/bin/conda" ]; then
 else
     # 下载安装包（缓存到 packages/）
     mkdir -p "$INSTALLER_DIR"
-    if [ ! -f "$INSTALLER" ]; then
-        log_info "下载 Miniconda 安装包..."
-        run_with_optional_proxy wget -q --show-progress -O "$INSTALLER" "$MINICONDA_URL"
-        log_success "安装包已缓存: $INSTALLER"
-    else
-        log_info "使用缓存的安装包: $INSTALLER"
-    fi
+    download_package "$MINICONDA_URL" "$INSTALLER" validate_shell_script
 
     chmod +x "$INSTALLER"
 

@@ -18,8 +18,10 @@ fi
 
 SDKMAN_DIR="$HOME/.local/opt/sdkman"
 MAVEN_CACHE_DIR="$CACHE_DIR/maven"
+SDKMAN_PACKAGE_DIR="$PACKAGES_DIR/sdkman"
+SDKMAN_INSTALLER="$SDKMAN_PACKAGE_DIR/install.sh"
 
-mkdir -p "$MAVEN_CACHE_DIR"
+mkdir -p "$MAVEN_CACHE_DIR" "$SDKMAN_PACKAGE_DIR"
 
 # ========== 1. 安装 SDKMAN ==========
 
@@ -38,7 +40,8 @@ else
 
     log_info "安装 SDKMAN..."
     export SDKMAN_DIR="$SDKMAN_DIR"
-    curl -s "https://get.sdkman.io" | bash
+    download_package "https://get.sdkman.io" "$SDKMAN_INSTALLER" validate_shell_script
+    run_with_optional_proxy bash "$SDKMAN_INSTALLER"
     log_success "SDKMAN 安装完成"
 fi
 

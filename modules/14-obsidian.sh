@@ -6,8 +6,9 @@ source "$(dirname "$0")/../common.sh"
 
 # ========== 路径常量 ==========
 
-OBSIDIAN_CACHE_DIR="$CACHE_DIR/obsidian"
-mkdir -p "$OBSIDIAN_CACHE_DIR"
+OBSIDIAN_PACKAGE_DIR="$PACKAGES_DIR/obsidian"
+OBSIDIAN_LEGACY_CACHE_DIR="$CACHE_DIR/obsidian"
+mkdir -p "$OBSIDIAN_PACKAGE_DIR"
 
 # ========== 辅助函数 ==========
 
@@ -46,14 +47,32 @@ if [ -n "$INSTALLED_VER" ] && ! upgrade_requested; then
     fi
     exit 0
 fi
+OFFLINE_CACHED_DEB=""
 LATEST_VER=$(get_latest_obsidian_version)
 
 if [ -z "$LATEST_VER" ]; then
-    log_warn "无法获取最新版本信息，跳过"
-    if [ -n "$INSTALLED_VER" ]; then
+    CACHED_DEB="$(find_latest_valid_package "$OBSIDIAN_PACKAGE_DIR" 'obsidian_*_amd64.deb' validate_deb_package || true)"
+    if [ -z "$CACHED_DEB" ]; then
+        LEGACY_CACHED_DEB="$(find_latest_valid_package "$OBSIDIAN_LEGACY_CACHE_DIR" 'obsidian_*_amd64.deb' validate_deb_package || true)"
+        if [ -n "$LEGACY_CACHED_DEB" ]; then
+            CACHED_DEB="$OBSIDIAN_PACKAGE_DIR/${LEGACY_CACHED_DEB##*/}"
+            migrate_legacy_package "$LEGACY_CACHED_DEB" "$CACHED_DEB" validate_deb_package
+        fi
+    fi
+    if [ -n "$CACHED_DEB" ]; then
+        CACHED_NAME="${CACHED_DEB##*/}"
+        CACHED_VERSION="${CACHED_NAME#obsidian_}"
+        CACHED_VERSION="${CACHED_VERSION%_amd64.deb}"
+        LATEST_VER="v$CACHED_VERSION"
+        OFFLINE_CACHED_DEB="$CACHED_DEB"
+        log_warn "无法获取最新版本信息，使用本地缓存版本: $CACHED_VERSION"
+    else
+        log_warn "无法获取最新版本信息，且本地无有效安装包"
+    fi
+    if [ -z "$LATEST_VER" ] && [ -n "$INSTALLED_VER" ]; then
         log_info "当前已安装版本: $INSTALLED_VER"
     fi
-    exit 0
+    [ -n "$LATEST_VER" ] || exit 0
 fi
 
 log_info "最新版本: $LATEST_VER"
@@ -81,21 +100,17 @@ fi
 
 # ========== 3. 下载 Deb 包 ==========
 
-DEB_FILE="$OBSIDIAN_CACHE_DIR/obsidian_${LATEST_NUM}_amd64.deb"
-DEB_URL=$(get_obsidian_deb_url "$LATEST_VER")
-[ -n "$DEB_URL" ] || { log_error "未找到 Obsidian $LATEST_VER 的 amd64 Deb 资产"; exit 1; }
-
-if [ -f "$DEB_FILE" ] && dpkg-deb --info "$DEB_FILE" &>/dev/null; then
-    log_info "使用缓存的 Deb 包: $DEB_FILE"
+if [ -n "$OFFLINE_CACHED_DEB" ]; then
+    DEB_FILE="$OFFLINE_CACHED_DEB"
+    log_info "使用缓存的安装包: $DEB_FILE"
 else
-    [ ! -e "$DEB_FILE" ] || { log_warn "删除无效的 Obsidian Deb 缓存"; rm -f "$DEB_FILE"; }
-    log_info "下载 Obsidian ${LATEST_VER}..."
-    if ! run_with_optional_proxy curl -fSL -o "$DEB_FILE" "$DEB_URL"; then
-        log_error "下载失败: $DEB_URL"
-        exit 1
-    fi
-    dpkg-deb --info "$DEB_FILE" &>/dev/null || { log_error "下载的 Deb 包校验失败"; exit 1; }
-    log_success "下载完成: $DEB_FILE"
+    DEB_FILE="$OBSIDIAN_PACKAGE_DIR/obsidian_${LATEST_NUM}_amd64.deb"
+    LEGACY_DEB_FILE="$OBSIDIAN_LEGACY_CACHE_DIR/obsidian_${LATEST_NUM}_amd64.deb"
+    DEB_URL=$(get_obsidian_deb_url "$LATEST_VER")
+    [ -n "$DEB_URL" ] || { log_error "未找到 Obsidian $LATEST_VER 的 amd64 Deb 资产"; exit 1; }
+    migrate_legacy_package "$LEGACY_DEB_FILE" "$DEB_FILE" validate_deb_package || \
+        log_warn "忽略无效的旧 Obsidian 缓存: $LEGACY_DEB_FILE"
+    download_package "$DEB_URL" "$DEB_FILE" validate_deb_package
 fi
 
 # ========== 4. 安装 ==========

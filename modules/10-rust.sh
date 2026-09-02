@@ -8,9 +8,12 @@ source "$(dirname "$0")/../common.sh"
 
 RUSTUP_HOME="$HOME/.local/opt/rustup"
 CARGO_HOME="$HOME/.local/opt/cargo"
+RUST_PACKAGE_DIR="$PACKAGES_DIR/rust"
+RUSTUP_INIT="$RUST_PACKAGE_DIR/rustup-init-x86_64-unknown-linux-gnu"
 
 export RUSTUP_HOME="$RUSTUP_HOME"
 export CARGO_HOME="$CARGO_HOME"
+mkdir -p "$RUST_PACKAGE_DIR"
 
 # 清华镜像
 export RUSTUP_DIST_SERVER="https://mirrors.tuna.tsinghua.edu.cn/rustup"
@@ -25,22 +28,18 @@ else
 
     # 从清华镜像直接下载 rustup-init 二进制
     RUSTUP_INIT_URL="https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup/dist/x86_64-unknown-linux-gnu/rustup-init"
-    RUSTUP_TMP_DIR="$(mktemp -d)"
-    TMP_INIT="$RUSTUP_TMP_DIR/rustup-init"
-    if run_with_optional_proxy curl -fsSL -o "$TMP_INIT" "$RUSTUP_INIT_URL"; then
-        chmod +x "$TMP_INIT"
+    if download_package "$RUSTUP_INIT_URL" "$RUSTUP_INIT" validate_elf_binary; then
+        chmod +x "$RUSTUP_INIT"
         # 确保环境变量传递给 rustup-init
         export RUSTUP_HOME="$RUSTUP_HOME"
         export CARGO_HOME="$CARGO_HOME"
         export RUSTUP_DIST_SERVER="https://mirrors.tuna.tsinghua.edu.cn/rustup"
         export RUSTUP_UPDATE_ROOT="https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup"
-        "$TMP_INIT" -y --no-modify-path \
+        run_with_optional_proxy "$RUSTUP_INIT" -y --no-modify-path \
             --default-toolchain stable \
             --default-host x86_64-unknown-linux-gnu
-        rm -rf "$RUSTUP_TMP_DIR"
         log_success "rustup 安装完成"
     else
-        rm -rf "$RUSTUP_TMP_DIR"
         log_error "rustup-init 下载失败"
         exit 1
     fi

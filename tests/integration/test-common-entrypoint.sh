@@ -30,7 +30,7 @@ required_functions=(
     prompt_choice prompt_yesno prompt_input prompt_secret prompt_table
     ensure_sudo run_as_root ensure_workspace_ready
     ensure_bashrc_d_loader ensure_shell_env_loader write_profile_env_file
-    detect_distro run_with_optional_proxy setup_proxy
+    detect_distro run_with_optional_proxy export_proxy_environment download_package setup_proxy
 )
 for function_name in "${required_functions[@]}"; do
     declare -F "$function_name" >/dev/null || fail "common facade is missing $function_name"

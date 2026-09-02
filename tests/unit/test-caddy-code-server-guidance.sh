@@ -16,24 +16,17 @@ fail() {
 source "$CADDY_HELPER"
 source "$CODE_SERVER_HELPER"
 
-if ! declare -F prepare_code_server_curl_config >/dev/null; then
-    fail "code-server installer curl policy is missing"
-fi
+fixture="$(mktemp -d)"
+trap 'rm -rf "$fixture"' EXIT
 
+release_json='{"tag_name":"v4.135.0","assets":[{"browser_download_url":"https://github.com/coder/code-server/releases/download/v4.135.0/code-server_4.135.0_amd64.deb"}]}'
+deb_url="$(printf '%s\n' "$release_json" | code_server_deb_url_from_release_json amd64)"
+[ "$deb_url" = 'https://github.com/coder/code-server/releases/download/v4.135.0/code-server_4.135.0_amd64.deb' ] || \
+    fail "code-server release metadata did not resolve the amd64 Deb"
 caddy_go_version_supported 'go1.25.0' || fail "Go 1.25 was rejected"
 caddy_go_version_supported 'go1.26.4' || fail "Go 1.26 was rejected"
 if caddy_go_version_supported 'go1.24.9'; then fail "Go 1.24 was accepted"; fi
 if caddy_go_version_supported 'invalid'; then fail "invalid Go version was accepted"; fi
-
-fixture="$(mktemp -d)"
-trap 'rm -rf "$fixture"' EXIT
-curl_home="$fixture/curl-home"
-prepare_code_server_curl_config "$curl_home"
-curl_config="$(cat "$curl_home/.curlrc")"
-case "$curl_config" in
-    *'connect-timeout = 10'*'max-time = 300'*'retry = 3'*'retry-all-errors'*) ;;
-    *) fail "code-server installer curl policy is not bounded and retryable" ;;
-esac
 
 cat > "$fixture/code-server-version" <<'EOF'
 #!/bin/bash
@@ -58,6 +51,9 @@ chmod +x "$fixture"/caddy-*
 
 caddy_binary_has_alidns "$fixture/caddy-with-alidns" || fail "AliDNS-enabled Caddy was rejected"
 if caddy_binary_has_alidns "$fixture/caddy-without-alidns"; then fail "standard Caddy was treated as AliDNS-enabled"; fi
+archive_caddy_binary "$fixture/caddy-with-alidns" "$fixture/archive/caddy-custom"
+caddy_binary_has_alidns "$fixture/archive/caddy-custom" || fail "archived Caddy did not retain AliDNS support"
+[ -x "$fixture/archive/caddy-custom" ] || fail "archived Caddy is not executable"
 
 caddy_guide="$(render_caddy_next_steps)"
 case "$caddy_guide" in

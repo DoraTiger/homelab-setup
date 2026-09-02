@@ -7,9 +7,10 @@ source "$(dirname "$0")/../common.sh"
 # ========== 路径常量 ==========
 
 ZOTERO_INSTALL_DIR="$HOME/.local/opt/zotero"
-ZOTERO_CACHE_DIR="$CACHE_DIR/zotero"
+ZOTERO_PACKAGE_DIR="$PACKAGES_DIR/zotero"
+ZOTERO_LEGACY_CACHE_DIR="$CACHE_DIR/zotero"
 ZOTERO_DESKTOP_LINK="$HOME/.local/share/applications/zotero.desktop"
-mkdir -p "$ZOTERO_CACHE_DIR" "$HOME/.local/opt" "$HOME/.local/share/applications"
+mkdir -p "$ZOTERO_PACKAGE_DIR" "$HOME/.local/opt" "$HOME/.local/share/applications"
 
 # ========== 辅助函数 ==========
 
@@ -81,12 +82,29 @@ if [ -n "$INSTALLED_VER" ] && ! upgrade_requested; then
     fi
     exit 0
 fi
+OFFLINE_CACHED_TARBALL=""
 LATEST_VER=$(get_latest_zotero_version)
 
 if [ -z "$LATEST_VER" ]; then
-    log_warn "无法获取最新版本信息，跳过"
-    [ -n "$INSTALLED_VER" ] && log_info "当前已安装版本: $INSTALLED_VER"
-    exit 0
+    CACHED_TARBALL="$(find_latest_valid_package "$ZOTERO_PACKAGE_DIR" 'Zotero-*_linux-x86_64.tar.*' validate_tar_archive || true)"
+    if [ -z "$CACHED_TARBALL" ]; then
+        LEGACY_CACHED_TARBALL="$(find_latest_valid_package "$ZOTERO_LEGACY_CACHE_DIR" 'Zotero-*_linux-x86_64.tar.*' validate_tar_archive || true)"
+        if [ -n "$LEGACY_CACHED_TARBALL" ]; then
+            CACHED_TARBALL="$ZOTERO_PACKAGE_DIR/${LEGACY_CACHED_TARBALL##*/}"
+            migrate_legacy_package "$LEGACY_CACHED_TARBALL" "$CACHED_TARBALL" validate_tar_archive
+        fi
+    fi
+    if [ -n "$CACHED_TARBALL" ]; then
+        CACHED_NAME="${CACHED_TARBALL##*/}"
+        LATEST_VER="${CACHED_NAME#Zotero-}"
+        LATEST_VER="${LATEST_VER%_linux-x86_64.tar.*}"
+        OFFLINE_CACHED_TARBALL="$CACHED_TARBALL"
+        log_warn "无法获取最新版本信息，使用本地缓存版本: $LATEST_VER"
+    else
+        log_warn "无法获取最新版本信息，且本地无有效安装包"
+        [ -n "$INSTALLED_VER" ] && log_info "当前已安装版本: $INSTALLED_VER"
+        exit 0
+    fi
 fi
 
 log_info "目标版本: Zotero $LATEST_VER"
@@ -112,24 +130,23 @@ fi
 
 # ========== 3. 下载 Tarball ==========
 
-TARBALL_URL=$(get_zotero_download_url "$LATEST_VER")
-ARCHIVE_EXT=$(get_zotero_archive_ext "$TARBALL_URL")
-TARBALL_FILE="$ZOTERO_CACHE_DIR/Zotero-${LATEST_VER}_linux-x86_64.tar.${ARCHIVE_EXT}"
-
-if [ -f "$TARBALL_FILE" ]; then
-    log_info "使用缓存的 Tarball: $TARBALL_FILE"
+if [ -n "$OFFLINE_CACHED_TARBALL" ]; then
+    TARBALL_FILE="$OFFLINE_CACHED_TARBALL"
+    ARCHIVE_EXT=$(get_zotero_archive_ext "$TARBALL_FILE")
+    log_info "使用缓存的安装包: $TARBALL_FILE"
 else
-    log_info "下载 Zotero ${LATEST_VER}..."
-    if ! run_with_optional_proxy curl -fSL -o "$TARBALL_FILE" "$TARBALL_URL"; then
-        log_error "下载失败: $TARBALL_URL"
-        exit 1
-    fi
-    log_success "下载完成: $TARBALL_FILE"
+    TARBALL_URL=$(get_zotero_download_url "$LATEST_VER")
+    ARCHIVE_EXT=$(get_zotero_archive_ext "$TARBALL_URL")
+    TARBALL_FILE="$ZOTERO_PACKAGE_DIR/Zotero-${LATEST_VER}_linux-x86_64.tar.${ARCHIVE_EXT}"
+    LEGACY_TARBALL_FILE="$ZOTERO_LEGACY_CACHE_DIR/Zotero-${LATEST_VER}_linux-x86_64.tar.${ARCHIVE_EXT}"
+    migrate_legacy_package "$LEGACY_TARBALL_FILE" "$TARBALL_FILE" validate_tar_archive || \
+        log_warn "忽略无效的旧 Zotero 缓存: $LEGACY_TARBALL_FILE"
+    download_package "$TARBALL_URL" "$TARBALL_FILE" validate_tar_archive
 fi
 
 # ========== 4. 解压安装 ==========
 
-EXTRACT_DIR="$ZOTERO_CACHE_DIR/extract"
+EXTRACT_DIR="$(mktemp -d)"
 rm -rf "$EXTRACT_DIR"
 mkdir -p "$EXTRACT_DIR"
 

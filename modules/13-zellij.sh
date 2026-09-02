@@ -22,13 +22,7 @@ else
     ZELLJ_URL="https://github.com/zellij-org/zellij/releases/latest/download/zellij-x86_64-unknown-linux-musl.tar.gz"
     ZELLJ_TAR="$ZELLJ_PKG_DIR/zellij-x86_64-unknown-linux-musl.tar.gz"
 
-    if [ ! -f "$ZELLJ_TAR" ]; then
-        log_info "下载 Zellij..."
-        run_with_optional_proxy curl -fsSL -o "$ZELLJ_TAR" "$ZELLJ_URL"
-        log_success "安装包已缓存: $ZELLJ_TAR"
-    else
-        log_info "使用缓存的安装包: $ZELLJ_TAR"
-    fi
+    download_package "$ZELLJ_URL" "$ZELLJ_TAR" validate_tar_archive
 
     mkdir -p "$ZELLJ_DIR"
     tar -xzf "$ZELLJ_TAR" -C "$ZELLJ_DIR"
@@ -48,15 +42,15 @@ if upgrade_requested; then
     log_info "升级模式已开启，检查 Zellij..."
     ZELLJ_LATEST_URL="https://github.com/zellij-org/zellij/releases/latest/download/zellij-x86_64-unknown-linux-musl.tar.gz"
     OLD_VER=$("$ZELLJ_DIR/zellij" --version 2>/dev/null | head -n1)
-    TMP_TAR="$(mktemp)"
-    if run_with_optional_proxy curl -fsSL -o "$TMP_TAR" "$ZELLJ_LATEST_URL" 2>/dev/null; then
+    TMP_TAR="$ZELLJ_PKG_DIR/zellij-upgrade.tar.gz"
+    if download_package "$ZELLJ_LATEST_URL" "$TMP_TAR" validate_tar_archive 2>/dev/null; then
         TMP_DIR="$(mktemp -d)"
         tar -xzf "$TMP_TAR" -C "$TMP_DIR" 2>/dev/null
         if [ -f "$TMP_DIR/zellij" ]; then
             NEW_VER=$("$TMP_DIR/zellij" --version 2>/dev/null | head -n1)
             if [ "$OLD_VER" != "$NEW_VER" ]; then
                 install -m 755 "$TMP_DIR/zellij" "$ZELLJ_DIR/zellij"
-                mv "$TMP_TAR" "$ZELLJ_PKG_DIR/zellij-x86_64-unknown-linux-musl.tar.gz"
+                mv -f "$TMP_TAR" "$ZELLJ_PKG_DIR/zellij-x86_64-unknown-linux-musl.tar.gz"
                 log_success "Zellij 已升级: $OLD_VER → $NEW_VER"
             else
                 log_success "Zellij 已是最新版本: $OLD_VER"

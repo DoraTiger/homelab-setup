@@ -43,7 +43,10 @@ HOMELAB_UPGRADE="$CLI_UPGRADE"
 PROXY_ADDR="$CLI_PROXY"
 MODULE_ARGS=("${CLI_SELECTORS[@]}")
 export HOMELAB_SILENT="$SILENT" HOMELAB_UPGRADE
-[ -z "$PROXY_ADDR" ] || export PROXY_ADDR
+if [ -n "$PROXY_ADDR" ]; then
+    export PROXY_ADDR
+    export_proxy_environment
+fi
 
 if [ -n "$CLI_WORKSPACE_ROOT" ]; then
     homelab_write_local_workspace "$SETUP_ROOT/.homelab.local" "$CLI_WORKSPACE_ROOT"

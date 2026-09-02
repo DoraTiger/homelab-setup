@@ -14,6 +14,15 @@ caddy_binary_has_alidns() {
     "$binary" list-modules 2>/dev/null | grep -qx 'dns.providers.alidns'
 }
 
+archive_caddy_binary() {
+    local source_binary="$1" destination="$2"
+
+    caddy_binary_has_alidns "$source_binary" || return 1
+    mkdir -p "$(dirname "$destination")"
+    install -m 755 "$source_binary" "$destination.part"
+    mv -f "$destination.part" "$destination"
+}
+
 render_caddy_next_steps() {
     cat <<'EOF'
 

@@ -35,8 +35,17 @@ workspace/                    # 工作区根目录（不在本仓库内）
 │   ├── npm/
 │   └── pip/
 └── packages/                 # 安装包归档（不在本仓库内，运行时自动创建）
+    ├── caddy/
+    ├── code-server/
+    ├── fnm/
     ├── golang/
-    └── miniconda/
+    ├── miniconda/
+    ├── obsidian/
+    ├── rust/
+    ├── sdkman/
+    ├── texlive/
+    ├── zellij/
+    └── zotero/
 ```
 
 仓库默认放在 `$HOME/workspace/setup`，但代码不会写死用户名或仓库路径。数据工作区默认是 `$HOME/workspace`，可在菜单中修改，也可通过 `--workspace-root` 或 `HOMELAB_WORKSPACE_ROOT` 覆盖。迁移备份始终保存在当前 setup 仓库的 `backup/` 中。
@@ -96,7 +105,7 @@ bash init.sh
     [14] 14-obsidian.sh       Obsidian 笔记工具安装
     [15] 15-zotero.sh         Zotero 文献管理安装
     [16] 16-caddy.sh          Caddy + AliDNS Provider 安装
-    [17] 17-code-server.sh    code-server 安装
+    [17] 17-code-server.sh    code-server GitHub Deb 安装
   ────────────────────────────────────────────────
     [a] 全部  [p] 代理  [u] 升级模式  [w] 工作区  [q] 退出
 ```
@@ -135,6 +144,14 @@ bash init.sh
 
 支持 `http://`、`https://`、`socks5://` 格式。模块中的 `wget`/`curl` 下载会自动走代理。
 
+持久安装包统一保存到 `packages/<模块>/`。公共下载函数会先验证并复用本地
+文件；需要下载时先写入同目录的 `.part` 文件，应用超时、重试和代理策略，
+验证成功后再原子替换正式文件。这样下载中断不会破坏已有缓存。由 npm、pip、
+Go、Conda、Maven 等包管理器产生的可重建依赖仍保存在 `cache/`。
+
+早期版本写入 `cache/obsidian/` 和 `cache/zotero/` 的有效安装包会在需要时迁移到
+`packages/`；无效文件不会覆盖新的持久缓存。
+
 ## 模块列表
 
 | 编号 | 模块 | 说明 |
@@ -156,14 +173,16 @@ bash init.sh
 | 14 | obsidian | Obsidian 笔记工具 + Deb 包安装 + CLI 验证；升级模式下检查新版 |
 | 15 | zotero | Zotero 文献管理 + Tarball 用户级安装；升级模式下检查新版 |
 | 16 | caddy | Caddy 官方 Debian 包 + xcaddy 构建 AliDNS DNS Provider；构建前检查 Go 1.25+ |
-| 17 | code-server | code-server 官方 Debian 安装；仅输出 localhost 与 Caddy HTTPS 配置参考 |
+| 17 | code-server | code-server 官方 GitHub Deb 安装并持久缓存；仅输出 localhost 与 Caddy HTTPS 配置参考 |
 
 ### Caddy 与 code-server
 
 这两个模块不收集域名或 AliDNS AccessKey，也不修改 Caddyfile 或 code-server
-配置。code-server 模块不启动服务；Caddy 首次安装或替换自定义二进制时会重启
+配置。code-server 模块不启动服务；其官方 Deb 保存在
+`packages/code-server/`。Caddy 首次安装或替换自定义二进制时会重启
 Caddy，以启用 AliDNS Provider。Caddy 模块仅在缺少
-`dns.providers.alidns` 时使用 Go/xcaddy 构建自定义二进制；因此建议先执行 Go
+`dns.providers.alidns` 且没有有效的本地归档时使用 Go/xcaddy 构建自定义二进制，
+构建结果保存在 `packages/caddy/`；因此建议先执行 Go
 模块，或直接按编号顺序执行：
 
 ```bash

@@ -30,14 +30,7 @@ else
 
     # 下载 install-tl.zip
     INSTALLER_ZIP="$INSTALLER_DIR/install-tl.zip"
-    if [ ! -f "$INSTALLER_ZIP" ]; then
-        log_info "下载 install-tl.zip..."
-        run_with_optional_proxy curl -fsSL -o "$INSTALLER_ZIP" \
-            "$CTAN_REPO/install-tl.zip"
-        log_success "安装包已缓存: $INSTALLER_ZIP"
-    else
-        log_info "使用缓存的安装包: $INSTALLER_ZIP"
-    fi
+    download_package "$CTAN_REPO/install-tl.zip" "$INSTALLER_ZIP" validate_zip_archive
 
     # 解压
     INSTALLER_TMP="$INSTALLER_DIR/install-tl-tmp"

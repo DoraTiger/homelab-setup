@@ -45,10 +45,11 @@ fi
 LATEST_GO_VERSION="${LATEST_GO_VERSION#go}"
 
 # 扫描本地缓存的安装包
+CACHED_GO_FILE="$(find_latest_valid_package "$GO_PKG_DIR" 'go*.linux-amd64.tar.gz' validate_tar_archive || true)"
 CACHED_LATEST=""
-if ls "$GO_PKG_DIR"/go[0-9]*.linux-amd64.tar.gz &>/dev/null; then
-    CACHED_LATEST=$(ls "$GO_PKG_DIR"/go[0-9]*.linux-amd64.tar.gz 2>/dev/null | \
-        sed 's|.*/go\([0-9.]*\)\.linux-amd64\.tar\.gz|\1|' | sort -Vr | head -n1)
+if [ -n "$CACHED_GO_FILE" ]; then
+    CACHED_LATEST="${CACHED_GO_FILE##*/go}"
+    CACHED_LATEST="${CACHED_LATEST%.linux-amd64.tar.gz}"
 fi
 
 # 确定目标版本
@@ -78,14 +79,13 @@ if [ ! -d "$TARGET_INSTALL_DIR" ]; then
     if [ "$USE_CACHED" = false ] && [ ! -f "$GO_TAR_FILE" ]; then
         log_info "下载 Go $TARGET_VERSION ..."
         DOWNLOAD_URL="https://dl.google.com/go/go${TARGET_VERSION}.linux-amd64.tar.gz"
-        if ! run_with_optional_proxy wget -q --show-progress -O "$GO_TAR_FILE" "$DOWNLOAD_URL"; then
+        if ! download_package "$DOWNLOAD_URL" "$GO_TAR_FILE" validate_tar_archive; then
             if [ -n "$CACHED_LATEST" ]; then
                 log_warn "下载失败，回退到缓存版本: $CACHED_LATEST"
                 TARGET_VERSION="$CACHED_LATEST"
                 GO_TAR_FILE="$GO_PKG_DIR/go${CACHED_LATEST}.linux-amd64.tar.gz"
             else
                 log_error "下载失败且无缓存"
-                rm -f "$GO_TAR_FILE"
                 exit 1
             fi
         fi
