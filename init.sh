@@ -1,153 +1,132 @@
 #!/bin/bash
 # init.sh - Unified entrypoint for Homelab Debian environment setup
-#
-# 用法:
-#   bash init.sh                     # 交互式菜单
-#   bash init.sh --silent            # 静默执行全部模块
-#   bash init.sh --silent 1 3        # 静默执行第 1、3 个模块
-#   bash init.sh --proxy socks5://127.0.0.1:7890  # 指定代理
 
 set -e
 
 cd "$(dirname "$0")"
 source ./common.sh
 
-# ========== 参数解析 ==========
-SILENT=0
-MODULE_ARGS=()
+# ========== 1. 参数与工作区 ==========
 
-for arg in "$@"; do
-    case "$arg" in
-        --silent|-s) SILENT=1 ;;
-        --proxy)     shift; PROXY_ADDR="$1" ;;
-        *)           MODULE_ARGS+=("$arg") ;;
-    esac
-done
+homelab_parse_init_args "$@" || exit 1
+SILENT="$CLI_SILENT"
+HOMELAB_UPGRADE="$CLI_UPGRADE"
+PROXY_ADDR="$CLI_PROXY"
+MODULE_ARGS=("${CLI_SELECTORS[@]}")
+export HOMELAB_SILENT="$SILENT" HOMELAB_UPGRADE
+[ -z "$PROXY_ADDR" ] || export PROXY_ADDR
 
-export HOMELAB_SILENT="$SILENT"
-[ -n "${PROXY_ADDR:-}" ] && export PROXY_ADDR
-
-# ========== 扫描模块 ==========
-declare -a MODULES=()
-declare -A DESCRIPTIONS=()
-
-shopt -s nullglob
-for f in modules/*.sh; do
-    name=$(basename "$f")
-    desc=$(grep -m1 '^# DESCRIPTION:' "$f" | sed 's/^# DESCRIPTION: //')
-    MODULES+=("$name")
-    DESCRIPTIONS["$name"]="${desc:-无描述}"
-done
-shopt -u nullglob
-
-if [ ${#MODULES[@]} -eq 0 ]; then
-    log_warn "未发现任何模块脚本 (modules/*.sh)"
-    exit 0
+if [ -n "$CLI_WORKSPACE_ROOT" ]; then
+    homelab_write_local_workspace "$SETUP_ROOT/.homelab.local" "$CLI_WORKSPACE_ROOT"
+    HOMELAB_WORKSPACE_ROOT="$(homelab_normalize_absolute_path "$CLI_WORKSPACE_ROOT" "$HOME")"
+    export HOMELAB_WORKSPACE_ROOT
+    homelab_initialize_paths "$SETUP_ROOT"
 fi
 
-# ========== 执行模块 ==========
-run_modules() {
-    local selected=("$@")
-    local total=${#selected[@]}
-    local current=0
+# ========== 2. 扫描模块 ==========
 
-    for mod in "${selected[@]}"; do
-        current=$((current + 1))
-        log_info "▶ [$current/$total] 执行: $mod — ${DESCRIPTIONS[$mod]}"
-        echo "──────────────────────────────────────────────────"
-        bash "modules/$mod"
-        echo "──────────────────────────────────────────────────"
-        log_success "✓ $mod 完成"
+declare -a MODULES=()
+declare -A DESCRIPTIONS=()
+shopt -s nullglob
+for module_file in modules/*.sh; do
+    description="$(grep -m1 '^# DESCRIPTION:' "$module_file" | sed 's/^# DESCRIPTION: //')"
+    MODULES+=("$module_file")
+    DESCRIPTIONS["$module_file"]="${description:-无描述}"
+done
+shopt -u nullglob
+[ "${#MODULES[@]}" -gt 0 ] || { log_error "未发现模块"; exit 1; }
+
+resolve_selections() {
+    local selector resolved
+    local -A seen=()
+    SELECTED_MODULES=()
+    for selector in "$@"; do
+        resolved="$(homelab_resolve_module "$selector" "${MODULES[@]}")" || return 1
+        if [ -z "${seen[$resolved]:-}" ]; then
+            SELECTED_MODULES+=("$resolved")
+            seen[$resolved]=1
+        fi
     done
 }
 
-# ========== 静默模式 ==========
-if [ "$SILENT" = "1" ]; then
-    [ -n "${PROXY_ADDR:-}" ] && log_info "代理: $PROXY_ADDR"
-    if [ ${#MODULE_ARGS[@]} -eq 0 ]; then
-        log_info "静默模式: 执行全部 ${#MODULES[@]} 个模块"
-        run_modules "${MODULES[@]}"
+run_modules() {
+    local selected=("$@") module_file current=0 total="${#selected[@]}"
+    for module_file in "${selected[@]}"; do
+        current=$((current + 1))
+        log_info "▶ [$current/$total] $(basename "$module_file") — ${DESCRIPTIONS[$module_file]}"
+        echo "──────────────────────────────────────────────────"
+        bash "$module_file"
+        echo "──────────────────────────────────────────────────"
+    done
+}
+
+# ========== 3. 静默执行 ==========
+
+if [ "$SILENT" = 1 ]; then
+    if [ "${#MODULE_ARGS[@]}" -eq 0 ]; then
+        SELECTED_MODULES=("${MODULES[@]}")
     else
-        selected=()
-        for num in "${MODULE_ARGS[@]}"; do
-            if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 1 ] && [ "$num" -le "${#MODULES[@]}" ]; then
-                selected+=("${MODULES[$((num-1))]}")
-            else
-                log_warn "无效模块编号: $num，已忽略"
-            fi
-        done
-        [ ${#selected[@]} -eq 0 ] && { log_error "无有效模块"; exit 1; }
-        run_modules "${selected[@]}"
+        resolve_selections "${MODULE_ARGS[@]}" || exit 1
     fi
-    echo ""
-    log_success "🎉 全部完成!"
+    run_modules "${SELECTED_MODULES[@]}"
+    log_success "全部完成"
     exit 0
 fi
 
-# ========== 交互菜单 ==========
-show_menu() {
-    clear
-    local root=$(cd .. && pwd)
-    local proxy_status="\033[0;33m未配置\033[0m"
-    [ -n "${PROXY_ADDR:-}" ] && proxy_status="\033[0;32m$PROXY_ADDR\033[0m"
+# ========== 4. 交互菜单 ==========
 
+show_menu() {
+    local module_file name prefix
+    clear
     echo ""
-    echo -e "\033[0;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-    echo -e "\033[0;36m  Homelab Debian 环境配置工具\033[0m"
-    echo -e "\033[0;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-    echo -e "  项目路径:   $root"
-    echo -e "  缓存目录:   $root/cache"
-    echo -e "  安装包:     $root/packages"
-    echo -e "  密钥目录:   $root/setup/keys"
-    echo -e "  代理状态:   $proxy_status"
-    echo -e "\033[0;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
-    echo ""
-    echo -e "\033[0;33m  可用模块:\033[0m"
-    echo "  ────────────────────────────────────────────────"
-    for i in "${!MODULES[@]}"; do
-        printf "    \033[0;32m[%2d]\033[0m %-24s %s\n" "$i" "${MODULES[$i]}" "${DESCRIPTIONS[${MODULES[$i]}]}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Homelab Debian + Xfce 环境配置"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Setup:    $SETUP_ROOT"
+    echo "  工作区:   $WORKSPACE_ROOT"
+    echo "  缓存:     $CACHE_DIR"
+    echo "  安装包:   $PACKAGES_DIR"
+    echo "  备份:     $BACKUP_DIR"
+    echo "  代理:     ${PROXY_ADDR:-未配置}"
+    echo "  升级模式: $([ "$HOMELAB_UPGRADE" = 1 ] && echo 开启 || echo 关闭)"
+    echo "──────────────────────────────────────────────────"
+    for module_file in "${MODULES[@]}"; do
+        name="$(basename "$module_file")"
+        prefix="${name%%-*}"
+        printf '  [%2s] %-24s %s\n' "$prefix" "$name" "${DESCRIPTIONS[$module_file]}"
     done
-    echo "  ────────────────────────────────────────────────"
-    echo -e "    \033[0;33m[a]\033[0m  全部执行     \033[0;33m[p]\033[0m  配置代理     \033[0;33m[q]\033[0m  退出"
-    echo ""
+    echo "──────────────────────────────────────────────────"
+    echo "  [a] 全部  [p] 代理  [u] 升级模式  [w] 工作区  [q] 退出"
 }
 
 while true; do
     show_menu
     read -rp "请选择: " input
-
     case "$input" in
-        q|Q|quit|exit)
-            log_info "已退出"
-            exit 0
+        q|Q|quit|exit) log_info "已退出"; exit 0 ;;
+        p|P|proxy) setup_proxy; read -rp "按回车返回菜单..." _ ;;
+        u|U|upgrade)
+            if [ "$HOMELAB_UPGRADE" = 1 ]; then HOMELAB_UPGRADE=0; else HOMELAB_UPGRADE=1; fi
+            export HOMELAB_UPGRADE
             ;;
-        p|P|proxy)
-            setup_proxy
-            read -rp "按回车返回菜单..." _
+        w|W|workspace)
+            workspace_input="$(prompt_input "工作区路径" "$WORKSPACE_ROOT")"
+            homelab_write_local_workspace "$SETUP_ROOT/.homelab.local" "$workspace_input"
+            HOMELAB_WORKSPACE_ROOT="$(homelab_normalize_absolute_path "$workspace_input" "$HOME")"
+            export HOMELAB_WORKSPACE_ROOT
+            homelab_initialize_paths "$SETUP_ROOT"
             ;;
-        a|A|all)
-            run_modules "${MODULES[@]}"
-            break
-            ;;
+        a|A|all) run_modules "${MODULES[@]}"; break ;;
         *)
-            selected=()
-            for num in $input; do
-                if [[ "$num" =~ ^[0-9]+$ ]] && [ "$num" -ge 0 ] && [ "$num" -lt "${#MODULES[@]}" ]; then
-                    selected+=("${MODULES[$num]}")
-                else
-                    log_warn "无效选择: $num，已忽略"
-                fi
-            done
-            if [ ${#selected[@]} -eq 0 ]; then
-                log_warn "未选择任何有效模块"
-                read -rp "按回车返回..." _
+            read -ra selectors <<< "$input"
+            if ! resolve_selections "${selectors[@]}"; then
+                read -rp "按回车返回菜单..." _
                 continue
             fi
-            run_modules "${selected[@]}"
+            run_modules "${SELECTED_MODULES[@]}"
             break
             ;;
     esac
 done
 
-echo ""
-log_success "🎉 选中的模块已全部完成!"
+log_success "选中的模块已全部完成"

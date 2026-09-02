@@ -15,3 +15,7 @@ Thumbs.db
 
 # 日志
 *.log
+
+# setup 本地运行数据
+/backup/
+/.homelab.local
