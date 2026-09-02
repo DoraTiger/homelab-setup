@@ -92,7 +92,8 @@ file_has_fcitx5_environment() {
 
     grep -Eq '^[[:space:]]*(export[[:space:]]+)?GTK_IM_MODULE=fcitx[[:space:]]*$' "$profile_file" &&
         grep -Eq '^[[:space:]]*(export[[:space:]]+)?QT_IM_MODULE=fcitx[[:space:]]*$' "$profile_file" &&
-        grep -Eq '^[[:space:]]*(export[[:space:]]+)?XMODIFIERS=@im=fcitx[[:space:]]*$' "$profile_file"
+        grep -Eq '^[[:space:]]*(export[[:space:]]+)?XMODIFIERS=@im=fcitx[[:space:]]*$' "$profile_file" &&
+        grep -Eq '^[[:space:]]*(export[[:space:]]+)?GLFW_IM_MODULE=ibus[[:space:]]*$' "$profile_file"
 }
 
 ensure_fcitx_profile() {
@@ -119,14 +120,16 @@ ensure_fcitx_profile() {
         printf '\n' >> "$temp_file"
     fi
 
-    cat >> "$temp_file" <<EOF
-
-$begin_marker
-export GTK_IM_MODULE=fcitx
-export QT_IM_MODULE=fcitx
-export XMODIFIERS=@im=fcitx
-$end_marker
-EOF
+    printf '\n%s\n' "$begin_marker" >> "$temp_file"
+    grep -Eq '^[[:space:]]*(export[[:space:]]+)?GTK_IM_MODULE=fcitx[[:space:]]*$' "$temp_file" ||
+        printf '%s\n' 'export GTK_IM_MODULE=fcitx' >> "$temp_file"
+    grep -Eq '^[[:space:]]*(export[[:space:]]+)?QT_IM_MODULE=fcitx[[:space:]]*$' "$temp_file" ||
+        printf '%s\n' 'export QT_IM_MODULE=fcitx' >> "$temp_file"
+    grep -Eq '^[[:space:]]*(export[[:space:]]+)?XMODIFIERS=@im=fcitx[[:space:]]*$' "$temp_file" ||
+        printf '%s\n' 'export XMODIFIERS=@im=fcitx' >> "$temp_file"
+    grep -Eq '^[[:space:]]*(export[[:space:]]+)?GLFW_IM_MODULE=ibus[[:space:]]*$' "$temp_file" ||
+        printf '%s\n' 'export GLFW_IM_MODULE=ibus' >> "$temp_file"
+    printf '%s\n' "$end_marker" >> "$temp_file"
 
     chmod --reference="$profile_file" "$temp_file"
     mv "$temp_file" "$profile_file"
