@@ -41,14 +41,16 @@ if [ -f "$FNM_INSTALL_DIR/fnm" ]; then
         TMP_SCRIPT="$(mktemp)"
         OLD_VER=$("$FNM_INSTALL_DIR/fnm" --version 2>/dev/null)
         if run_with_optional_proxy curl -fsSL "$FNM_SCRIPT_URL" -o "$TMP_SCRIPT" 2>/dev/null; then
-            bash "$TMP_SCRIPT" --install-dir "$FNM_INSTALL_DIR" --skip-shell >/dev/null 2>&1
-            NEW_VER=$("$FNM_INSTALL_DIR/fnm" --version 2>/dev/null)
-            rm -f "$TMP_SCRIPT"
-            log_success "fnm 升级检查完成: $OLD_VER → $NEW_VER"
+            if bash "$TMP_SCRIPT" --install-dir "$FNM_INSTALL_DIR" --skip-shell >/dev/null 2>&1; then
+                NEW_VER=$("$FNM_INSTALL_DIR/fnm" --version 2>/dev/null)
+                log_success "fnm 升级检查完成: $OLD_VER → $NEW_VER"
+            else
+                log_warn "fnm 升级失败，保留当前版本: $OLD_VER"
+            fi
         else
-            rm -f "$TMP_SCRIPT"
             log_warn "fnm 升级脚本下载失败，保持当前版本: $OLD_VER"
         fi
+        rm -f "$TMP_SCRIPT"
     else
         log_info "默认模式保留现有 fnm 版本"
     fi

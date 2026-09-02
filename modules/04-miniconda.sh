@@ -19,6 +19,8 @@ INSTALLER="$INSTALLER_DIR/Miniconda3-latest-Linux-x86_64.sh"
 MINICONDA_URL="https://mirrors.tuna.tsinghua.edu.cn/anaconda/miniconda/Miniconda3-latest-Linux-x86_64.sh"
 CONDA_PACKAGE_CACHE_DIR="$CACHE_DIR/conda/pkgs"
 PIP_CACHE_DIR="$CACHE_DIR/pip"
+CONDA_FORGE_CHANNEL="https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge/"
+CONDA_MAIN_CHANNEL="https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/"
 
 mkdir -p "$CONDA_PACKAGE_CACHE_DIR" "$PIP_CACHE_DIR"
 
@@ -29,9 +31,8 @@ log_info "配置 conda/pip 清华镜像..."
 # condarc
 CONDA_CONF="$HOME/.condarc"
 CONDA_CONF_CONTENT="channels:
-  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge/
-  - https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/
-  - defaults
+  - $CONDA_FORGE_CHANNEL
+  - $CONDA_MAIN_CHANNEL
 show_channel_urls: true
 channel_priority: strict
 custom_channels:
@@ -71,8 +72,10 @@ if [ -f "$INSTALL_DIR/bin/conda" ]; then
     if upgrade_requested; then
         # 只升级 base 环境；不修改用户创建的独立环境。
         log_info "升级模式已开启，更新 Miniconda base 环境..."
-        "$INSTALL_DIR/bin/conda" update -n base -c defaults conda -y
-        "$INSTALL_DIR/bin/conda" update -n base --all -y
+        "$INSTALL_DIR/bin/conda" update -n base --override-channels \
+            -c "$CONDA_MAIN_CHANNEL" conda -y
+        "$INSTALL_DIR/bin/conda" update -n base --all --override-channels \
+            -c "$CONDA_FORGE_CHANNEL" -c "$CONDA_MAIN_CHANNEL" -y
         NEW_VER=$("$INSTALL_DIR/bin/conda" --version 2>/dev/null | awk '{print $2}')
         log_success "Miniconda 升级检查完成: $CONDA_VER → $NEW_VER"
     else

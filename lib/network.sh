@@ -17,10 +17,22 @@ detect_distro() {
 }
 
 run_with_optional_proxy() {
+    local command_name="${1##*/}"
+    local -a command_line=("$@")
+
+    case "$command_name" in
+        curl)
+            command_line=("$1" --connect-timeout 10 --max-time 180 "${@:2}")
+            ;;
+        wget)
+            command_line=("$1" --timeout=30 --tries=3 "${@:2}")
+            ;;
+    esac
+
     if [ -n "${PROXY_ADDR:-}" ]; then
-        HTTP_PROXY="$PROXY_ADDR" HTTPS_PROXY="$PROXY_ADDR" ALL_PROXY="$PROXY_ADDR" "$@"
+        HTTP_PROXY="$PROXY_ADDR" HTTPS_PROXY="$PROXY_ADDR" ALL_PROXY="$PROXY_ADDR" "${command_line[@]}"
     else
-        "$@"
+        "${command_line[@]}"
     fi
 }
 
