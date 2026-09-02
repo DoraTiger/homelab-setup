@@ -18,7 +18,13 @@ homelab_parse_init_args --silent --upgrade --proxy http://127.0.0.1:7890 --works
 [ "${CLI_SELECTORS[*]}" = '4 07' ] || fail "module selectors were not preserved"
 
 homelab_parse_init_args 12
-[ "$CLI_SILENT:$CLI_UPGRADE:${CLI_PROXY:-}:${CLI_WORKSPACE_ROOT:-}:${CLI_SELECTORS[*]}" = '0:0:::12' ] || fail "parser state leaked between calls"
+[ "$CLI_HELP:$CLI_SILENT:$CLI_UPGRADE:${CLI_PROXY:-}:${CLI_WORKSPACE_ROOT:-}:${CLI_SELECTORS[*]}" = '0:0:0:::12' ] || fail "parser state leaked between calls"
+
+homelab_parse_init_args --help
+[ "$CLI_HELP:$CLI_SILENT:$CLI_UPGRADE:${#CLI_SELECTORS[@]}" = '1:0:0:0' ] || fail "--help was not parsed as an isolated mode"
+
+homelab_parse_init_args -h
+[ "$CLI_HELP:$CLI_SILENT:$CLI_UPGRADE:${#CLI_SELECTORS[@]}" = '1:0:0:0' ] || fail "-h was not parsed as an isolated mode"
 
 if homelab_parse_init_args --proxy >/dev/null 2>&1; then fail "missing proxy value was accepted"; fi
 if homelab_parse_init_args --workspace-root >/dev/null 2>&1; then fail "missing workspace value was accepted"; fi

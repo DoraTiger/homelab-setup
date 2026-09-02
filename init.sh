@@ -9,6 +9,35 @@ source ./common.sh
 # ========== 1. 参数与工作区 ==========
 
 homelab_parse_init_args "$@" || exit 1
+
+if [ "$CLI_HELP" = 1 ]; then
+    cat <<'EOF'
+Usage: bash init.sh [OPTIONS] [MODULE ...]
+
+Configure a Debian + Xfce homelab environment. Without arguments, the
+interactive module menu is displayed.
+
+Options:
+  -h, --help                   Show this help and exit
+  -s, --silent                 Run without interactive prompts
+  -u, --upgrade                Explicitly upgrade installed components
+      --proxy URL              Use an HTTP, HTTPS, or SOCKS5 proxy
+      --workspace-root PATH    Select the data workspace root
+
+MODULE selectors:
+  A module can be selected by number, name, or full filename, for example:
+  03  docker  03-docker.sh
+
+Examples:
+  bash init.sh
+  bash init.sh --silent 03 11 12
+  bash init.sh --silent nodejs golang
+  bash init.sh --silent --upgrade 07
+  bash init.sh --workspace-root /data/homelab
+EOF
+    exit 0
+fi
+
 SILENT="$CLI_SILENT"
 HOMELAB_UPGRADE="$CLI_UPGRADE"
 PROXY_ADDR="$CLI_PROXY"

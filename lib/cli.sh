@@ -1,6 +1,7 @@
 #!/bin/bash
 
 homelab_parse_init_args() {
+    CLI_HELP=0
     CLI_SILENT=0
     CLI_UPGRADE=0
     CLI_PROXY=""
@@ -9,6 +10,7 @@ homelab_parse_init_args() {
 
     while [ "$#" -gt 0 ]; do
         case "$1" in
+            --help|-h) CLI_HELP=1; shift ;;
             --silent|-s) CLI_SILENT=1; shift ;;
             --upgrade|-u) CLI_UPGRADE=1; shift ;;
             --proxy)
