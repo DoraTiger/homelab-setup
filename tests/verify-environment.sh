@@ -91,6 +91,21 @@ check_login_command "LaTeX" latex "$HOME/.local/opt/texlive/2026/bin/x86_64-linu
 check_login_command "XeLaTeX" xelatex "$HOME/.local/opt/texlive/2026/bin/x86_64-linux/xelatex"
 check_login_command "tlmgr" tlmgr "$HOME/.local/opt/texlive/2026/bin/x86_64-linux/tlmgr"
 check_login_command "Zellij" zellij "$HOME/.local/bin/zellij"
+check_login_command "Caddy" caddy /usr/bin/caddy
+check_login_command "code-server" code-server /usr/bin/code-server
+
+if [ -x /usr/bin/caddy ]; then
+    if /usr/bin/caddy list-modules 2>/dev/null | grep -Fxq 'dns.providers.alidns'; then
+        printf 'PASS  %-18s available\n' "Caddy AliDNS"
+        passes=$((passes + 1))
+    else
+        printf 'FAIL  %-18s module missing\n' "Caddy AliDNS"
+        failures=$((failures + 1))
+    fi
+else
+    printf 'SKIP  %-18s Caddy is not installed\n' "Caddy AliDNS"
+    skips=$((skips + 1))
+fi
 
 check_login_variable "GOROOT" GOROOT "$HOME/.local/opt/go/current"
 check_login_variable "GOPATH" GOPATH "$HOME/workspace/cache/go"

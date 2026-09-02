@@ -12,6 +12,7 @@ fail() {
 modules=(
     04-miniconda.sh 05-golang.sh 06-java.sh 07-nodejs.sh
     10-rust.sh 11-texlive.sh 13-zellij.sh 14-obsidian.sh 15-zotero.sh
+    16-caddy.sh 17-code-server.sh
 )
 
 for name in "${modules[@]}"; do

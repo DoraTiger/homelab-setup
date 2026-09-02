@@ -95,6 +95,8 @@ bash init.sh
     [13] 13-zellij.sh         Zellij 终端复用器安装
     [14] 14-obsidian.sh       Obsidian 笔记工具安装
     [15] 15-zotero.sh         Zotero 文献管理安装
+    [16] 16-caddy.sh          Caddy + AliDNS Provider 安装
+    [17] 17-code-server.sh    code-server 安装
   ────────────────────────────────────────────────
     [a] 全部  [p] 代理  [u] 升级模式  [w] 工作区  [q] 退出
 ```
@@ -153,6 +155,23 @@ bash init.sh
 | 13 | zellij | Zellij 终端复用器 + GitHub 二进制安装；升级模式下检查新版 |
 | 14 | obsidian | Obsidian 笔记工具 + Deb 包安装 + CLI 验证；升级模式下检查新版 |
 | 15 | zotero | Zotero 文献管理 + Tarball 用户级安装；升级模式下检查新版 |
+| 16 | caddy | Caddy 官方 Debian 包 + xcaddy 构建 AliDNS DNS Provider；构建前检查 Go 1.25+ |
+| 17 | code-server | code-server 官方 Debian 安装；仅输出 localhost 与 Caddy HTTPS 配置参考 |
+
+### Caddy 与 code-server
+
+这两个模块不收集域名或 AliDNS AccessKey，也不修改 Caddyfile 或 code-server
+配置。code-server 模块不启动服务；Caddy 首次安装或替换自定义二进制时会重启
+Caddy，以启用 AliDNS Provider。Caddy 模块仅在缺少
+`dns.providers.alidns` 时使用 Go/xcaddy 构建自定义二进制；因此建议先执行 Go
+模块，或直接按编号顺序执行：
+
+```bash
+bash init.sh --silent 05 16 17
+```
+
+安装完成后，模块会在终端输出无真实域名和凭据的配置模板。AliDNS 凭据应由
+用户另行写入权限受限的 `/etc/caddy/alidns.env`，不得放入仓库或 Caddyfile。
 
 ## 新增模块
 
