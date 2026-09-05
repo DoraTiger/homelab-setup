@@ -229,10 +229,9 @@ bash service.sh --silent --workspace-root /data/homelab docker 00
 `$WORKSPACE_ROOT/services/docker/guacamole/` 生成 `compose.yaml`、`.env.example`、
 权限为 `600` 的随机凭据 `.env` 和数据库初始化 SQL。
 模板固定使用 PostgreSQL 17、Guacamole/guacd 1.6.0，并将 Web 端口默认绑定到
-`127.0.0.1:30090`，供 Caddy 反向代理。Guacamole 默认 Web 上下文为
-`/guacamole/`；Caddy 应保留此前缀，例如
-`reverse_proxy /guacamole/* 127.0.0.1:30090`，对应访问地址为
-`https://<YOUR_DOMAIN>/guacamole/`。
+`127.0.0.1:30090`，供 Caddy 反向代理。模板显式设置
+`WEBAPP_CONTEXT: ROOT`，因此 Caddy 可直接使用
+`reverse_proxy 127.0.0.1:30090`，对应访问地址为 `https://<YOUR_DOMAIN>/`。
 
 默认运行只拉取本地缺少的固定版本镜像，然后校验 Compose 配置并执行
 `docker compose up -d --remove-orphans`；重复执行会复用本地镜像、凭据、初始化 SQL

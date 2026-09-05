@@ -81,6 +81,7 @@ grep -Fq 'image: guacamole/guacd:1.6.0' "$compose_file" || fail "guacd image is 
 grep -Fq 'image: guacamole/guacamole:1.6.0' "$compose_file" || fail "Guacamole image is not pinned"
 grep -Fq '127.0.0.1:${GUACAMOLE_PORT:-30090}:8080' "$compose_file" || fail "web port is not loopback-only"
 grep -Fq 'GUACAMOLE_DB_PASSWORD' "$compose_file" || fail "database password variable is missing"
+grep -Fq 'WEBAPP_CONTEXT: ROOT' "$compose_file" || fail "Guacamole root web context is not explicit"
 grep -Fq 'name: guacamole' "$compose_file" || fail "Compose project name is not explicit"
 grep -Fq 'name: guacamole_postgres-data' "$compose_file" || fail "PostgreSQL volume name is not explicit"
 grep -Fq 'name: guacamole_guacamole' "$compose_file" || fail "Docker network name is not explicit"
@@ -96,7 +97,7 @@ case "$(cat "$env_example")" in
         ;;
 esac
 
-case "$first_output" in *'reverse_proxy /guacamole/* 127.0.0.1:30090'*'<YOUR_DOMAIN>/guacamole/'*) ;; *) fail "Caddy guidance is incomplete" ;; esac
+case "$first_output" in *'reverse_proxy 127.0.0.1:30090'*'<YOUR_DOMAIN>'*) ;; *) fail "Caddy guidance is incomplete" ;; esac
 case "$first_output" in *'不要将 RDP 目标填写为 127.0.0.1'*) ;; *) fail "RDP target guidance is incomplete" ;; esac
 case "$first_output" in *'guacamole  running'*) ;; *) fail "container status was not displayed" ;; esac
 

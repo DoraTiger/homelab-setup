@@ -85,6 +85,7 @@ services:
       POSTGRESQL_DATABASE: guacamole_db
       POSTGRESQL_USERNAME: guacamole_user
       POSTGRESQL_PASSWORD: ${GUACAMOLE_DB_PASSWORD:?set GUACAMOLE_DB_PASSWORD in .env}
+      WEBAPP_CONTEXT: ROOT
     ports:
       - "127.0.0.1:${GUACAMOLE_PORT:-30090}:8080"
     networks:
@@ -188,10 +189,10 @@ Guacamole 已完成部署收敛，配置目录:
 Caddy 反向代理参考（域名和 TLS/DNS 配置请自行补充）：
 
   <YOUR_DOMAIN> {
-      reverse_proxy /guacamole/* 127.0.0.1:30090
+      reverse_proxy 127.0.0.1:30090
   }
 
-默认访问路径为 <YOUR_DOMAIN>/guacamole/。
+默认访问路径为 <YOUR_DOMAIN>/。
 配置 Guacamole 的 RDP 连接时，不要将 RDP 目标填写为 127.0.0.1；
 容器中的 127.0.0.1 是容器自身，应填写 Docker 主机可达的局域网地址或网关地址。
 首次登录后请立即创建新的管理员账户并删除默认 guacadmin 账户。
