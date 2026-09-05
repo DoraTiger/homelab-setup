@@ -10,6 +10,7 @@
 4. **镜像源加速** — 包管理器统一配置国内镜像（清华源/阿里源），脚本内置幂等检查
 5. **安装包归档** — 下载的 tar.gz/deb 统一存放在 `packages/` 的二级子目录中，按软件分类，便于离线部署
 6. **交互/静默双模式** — 交互式菜单引导选择，也支持 `--silent` 参数用于自动化部署和远程执行
+7. **环境与服务分离** — `init.sh` 安装主机环境，`service.sh` 只在用户明确选择后准备有状态服务，二者使用独立编号
 
 ## 目录结构
 
@@ -19,10 +20,14 @@ workspace/                    # 工作区根目录（不在本仓库内）
 │   ├── common.sh             # 稳定公共入口
 │   ├── lib/                  # 路径、交互、配置及模块辅助函数
 │   ├── init.sh               # 入口脚本：扫描模块、交互菜单、静默执行
+│   ├── service.sh            # 服务入口：必须明确选择服务组和服务
 │   ├── modules/              # 仅存放可执行模块
 │   │   ├── 00-ssh.sh
 │   │   ├── 01-apt-sources.sh
 │   │   └── ...
+│   ├── services/             # 有状态服务部署，按运行方式独立编号
+│   │   └── docker/
+│   │       └── 00-guacamole.sh
 │   ├── tests/                # 单元、集成和真实环境只读验证
 │   ├── backup/               # setup 迁移备份（Git 忽略）
 │   ├── keys/                 # 远程设备公钥（*.pub 不入库）
@@ -72,6 +77,9 @@ bash init.sh --workspace-root /data/homelab
 
 # 使用代理
 bash init.sh --proxy socks5://127.0.0.1:7890
+
+# 显式准备 Guacamole Docker Compose 部署文件
+bash service.sh --silent docker 00
 ```
 
 ## 使用方式
@@ -191,6 +199,50 @@ bash init.sh --silent 05 16 17
 
 安装完成后，模块会在终端输出无真实域名和凭据的配置模板。AliDNS 凭据应由
 用户另行写入权限受限的 `/etc/caddy/alidns.env`，不得放入仓库或 Caddyfile。
+
+## 服务部署
+
+`modules/` 管理主机软件和运行环境；`services/` 管理会产生容器、数据库或其他
+持久化状态的服务实例。两类脚本分别由 `init.sh` 和 `service.sh` 调用，并使用
+独立编号。Obsidian、Zotero、Caddy 和 code-server 当前都只执行软件安装，因此
+仍属于环境模块。
+
+服务不会加入 `bash init.sh --silent` 的全量执行，也不提供“默认部署全部服务”
+的静默行为。静默调用必须明确给出服务组和至少一个服务选择器：
+
+```bash
+# 按编号、名称或完整文件名选择同一个 Docker 服务
+bash service.sh --silent docker 00
+bash service.sh --silent docker guacamole
+bash service.sh --silent docker 00-guacamole.sh
+
+# 主动拉取镜像更新后重新收敛服务
+bash service.sh --silent --upgrade docker 00
+
+# 使用其他数据工作区
+bash service.sh --silent --workspace-root /data/homelab docker 00
+```
+
+### Apache Guacamole
+
+`services/docker/00-guacamole.sh` 检查 Docker Compose 前置条件，并在
+`$WORKSPACE_ROOT/services/docker/guacamole/` 生成 `compose.yaml`、`.env.example`、
+权限为 `600` 的随机凭据 `.env` 和数据库初始化 SQL。
+模板固定使用 PostgreSQL 17、Guacamole/guacd 1.6.0，并将 Web 端口默认绑定到
+`127.0.0.1:30090`，供 Caddy 反向代理。Guacamole 默认 Web 上下文为
+`/guacamole/`；Caddy 应保留此前缀，例如
+`reverse_proxy /guacamole/* 127.0.0.1:30090`，对应访问地址为
+`https://<YOUR_DOMAIN>/guacamole/`。
+
+默认运行只拉取本地缺少的固定版本镜像，然后校验 Compose 配置并执行
+`docker compose up -d --remove-orphans`；重复执行会复用本地镜像、凭据、初始化 SQL
+和数据库卷。Compose 项目、网络和 PostgreSQL 卷分别固定为 `guacamole`、
+`guacamole_guacamole` 和 `guacamole_postgres-data`，移动配置目录不会创建第二套
+容器或空数据库卷。只有显式指定 `--upgrade` 才会执行 `docker compose pull`。脚本不会
+修改 Caddy/XRDP 配置，也不会收集域名、AliDNS 或 RDP 凭据。已有部署文件会原样
+保留，终端会输出容器状态、常用管理命令和 Caddy 反向代理参考。
+配置 RDP 连接时，应填写容器可达的 Docker 主机局域网地址或网关地址，不能填写
+容器自身的 `127.0.0.1`。
 
 ## 新增模块
 
